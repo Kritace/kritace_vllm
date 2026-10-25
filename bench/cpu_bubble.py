@@ -18,6 +18,12 @@ ZOS=0 时 GPU 每步的空泡 ≈ finish + schedule + run（因为 read 返回�
 """
 from __future__ import annotations
 
+import pathlib as _pathlib
+import sys as _sys
+
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parents[1]))
+
+
 import argparse
 import os
 import statistics
