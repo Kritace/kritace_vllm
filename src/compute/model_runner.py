@@ -272,6 +272,8 @@ class ModelRunner:
 
     @torch.inference_mode()
     def run_forward(self, sched: SchedulerOutput):
+        # 每步开头翻一次锁页暂存槽位（ZOS 下 CPU 可能仍在写上一槽）。
+        self.batch.begin_step()
         """一步 sync 前向：decode 再 prefill；PP 为 lockstep 切层，非 1F1B。
 
         非末 PP stage 只做本段计算 + P2P，返回 None；末 stage 异步 D2H 采样 id。

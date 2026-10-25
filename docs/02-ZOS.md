@@ -82,7 +82,9 @@ outputs = self.scheduler.finish(prev, p_ids, d_ids)
 另外三处配套改动：
 
 - **半截 prefill 挡在门外**：块中间被切开的序列这一轮没有采样结果可回灌，记进 `_blocked`，调度时直接 `break`（`scheduler.py:179`、`:275`）。
-- **输入暂存也要防覆盖**：`_stage_samples` 只给**采样结果**做了双缓冲，输入侧的锁页缓冲仍是单份 —— ZOS 下 CPU 不再等采样，可能在上一次 H2D 还没落地时就改写它（同步模式不会，因为组包前已经 synchronize）。`build_decode` / `build_prefill` 开头因此多一次 `self._h2d_event.query()`，没落地才 `synchronize()`（`src/compute/batch.py:188`、`:206`、`:261`、`:329`）。实测从不真的等待（`KRITACE_ZOS_STATS=1` 下不会打出 `[h2d-guard]`），所以它不破坏零开销。
+- **输入暂存也做双缓冲**：`_stage_samples` 给**采样结果**做双缓冲（那份数据要跨轮存活）；输入的锁页暂存则每步换一份，`Batch.begin_step()` 翻 `_buf_slot`（`src/compute/batch.py:194`，由 `run_forward` 开头调用）。
+  只换 CPU 侧缓冲 —— GPU 输入张量仍单份、地址不变，所以 **CUDA Graph 不需要重捕**。两份就够的理由是结构性的：第 t 步的 H2D 排在前向之前入队，而下一轮 `read_samples(t)` 必须等第 t 步的 D2H 兑现，那时流必然已越过 H2D(t)；两轮之后才复用同一槽位，因此不可能覆盖尚有 DMA 在途的缓冲。
+  （早期版本用 `cudaEvent.query()` 兜底，那只是「通常不会等」，不构成保证，已被这个方案取代。）
 - **按位置算块**：账本落后一步时旧判据 `len(seq) % block_size == 1` 会少分配一块，改用 `can_append_at(seq, pos)` / `may_append_at(seq, pos)`（`src/data/block_manager.py:266`、`src/data/kv.py:179`）。
 
 ## 5. 代码地图

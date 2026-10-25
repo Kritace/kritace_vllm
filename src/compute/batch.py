@@ -81,14 +81,6 @@ def _gpu(
 
 
 # 一整套常驻缓冲 + 每步的组包逻辑。decode / prefill 共用同一份。
-_STATS_ON = os.environ.get("KRITACE_ZOS_STATS", "0").strip().lower() not in (
-    "0",
-    "",
-    "false",
-    "no",
-)
-
-
 class Batch:
     def __init__(
         self,
@@ -141,33 +133,13 @@ class Batch:
         self.use_min_p = False
         self.max_top_k = 0
 
-        # decode 的 CPU 侧暂存（pinned）：每步最多 max_bs 行。
-        self._dec_ids = _pinned(max_bs, torch.int64)
-        self._dec_pos = _pinned(max_bs, torch.int64)
-        self._dec_slot = _pinned(max_bs, torch.int32, fill=-1)
-        self._dec_csl = _pinned(max_bs, torch.int32)
-        # remap 的 CPU 暂存：每步最多 max_bs 行。
-        self._dec_remap = _pinned(max_bs, torch.int32, fill=-1)
-        # 上一次组包发出去的 H2D 是否已经落地（ZOS 下 CPU 可能跑在它前面）。
-        self._h2d_event = torch.cuda.Event()
-
-        # prefill 的暂存：按 max_tokens 开。
-        self._pre_ids = _pinned(max_tokens, torch.int64)
-        self._pre_pos = _pinned(max_tokens, torch.int64)
-        self._pre_slot = _pinned(max_tokens, torch.int32, fill=-1)
-        self._pre_cuq = _pinned(max_bs + 1, torch.int32)
-        self._pre_cuk = _pinned(max_bs + 1, torch.int32)
-
-        # 采样参数的 CPU 暂存。
-        self._h_temp = _pinned(max_bs, torch.float32)
-        self._h_top_p = _pinned(max_bs, torch.float32)
-        self._h_top_k = _pinned(max_bs, torch.int32)
-        self._h_min_p = _pinned(max_bs, torch.float32)
-
-        # 页表的 pinned 缓冲 —— 直接用 numpy 逐格填，比构造张量省得多。
-        self._bt_pin = _pinned((max_bs, max_blocks), torch.int32, fill=-1)
-        # 它的 numpy 视图。注意：视图与张量共享内存。
-        self._bt_cpu = self._bt_pin.numpy()
+        # CPU 侧锁页暂存做两份，每步换一份（A/B 交替）。
+        # 只换 CPU 暂存，GPU 侧的输入张量仍然只有一份、地址不变 —— 所以 CUDA Graph 不受影响。
+        # 为什么两份就够：第 t 步的 H2D 排在第 t 步前向之前，而下一轮 read_samples(t) 必须等
+        # 第 t 步的 D2H 兑现，那时流早已过了 H2D(t)；两轮后才复用同一槽位，必然安全。
+        self._bufs = [self._make_pinned_set(max_bs, max_tokens, max_blocks) for _ in range(2)]
+        self._buf_slot = 0
+        self._use_slot(0)
         # 每行页表的指纹 (首页, 尾页, 长度)：用来判断「这一行到底变了没有」。
         self._row_fp: list[tuple[int, int, int]] = [(-1, -1, -1)] * max_bs
         # 上一次组包的序列 id 序列：换了一批序列，页表必须整表重发。
@@ -175,37 +147,55 @@ class Batch:
         # 采样参数快照：没变就跳过整段拷贝。
         self._samp_key: tuple | None = None
 
-        # 下面这一批 numpy 视图：写数据走 numpy，拷贝走 copy_，两者共享同一块内存。
-        self._dec_ids_np = self._dec_ids.numpy()
-        self._dec_pos_np = self._dec_pos.numpy()
-        self._dec_slot_np = self._dec_slot.numpy()
-        self._dec_csl_np = self._dec_csl.numpy()
-        self._dec_remap_np = self._dec_remap.numpy()
-        self._pre_ids_np = self._pre_ids.numpy()
-        self._pre_pos_np = self._pre_pos.numpy()
-        self._pre_slot_np = self._pre_slot.numpy()
-        self._pre_cuq_np = self._pre_cuq.numpy()
-        self._pre_cuk_np = self._pre_cuk.numpy()
-        self._h_temp_np = self._h_temp.numpy()
-        self._h_top_p_np = self._h_top_p.numpy()
-        self._h_top_k_np = self._h_top_k.numpy()
-        self._h_min_p_np = self._h_min_p.numpy()
 
     # decode 组包：每条序列只需要 4 个标量。pad_to 是 CG 档位补齐的目标。
     # decode 组包：每条序列只需要 4 个标量。pad_to 是 CG 档位补齐的目标。
     #
     # ZOS 让这一层多了第三种输入：`prev_sampled`（上一批的采样结果，还在显存里）。
-    def _wait_h2d(self) -> None:
-        # 上一次组包排的 H2D 若还没落地，就不能覆盖它正在读的锁页缓冲。
-        # 正常情况下这一步早就完成了（拷贝只要几微秒），query 直接返回。
-        if self._h2d_event.query():
-            return
-        if _STATS_ON:
-            print("[h2d-guard] waited for the previous H2D", flush=True)
-        self._h2d_event.synchronize()
 
     # 在途行（remap>=0）的 token id 此刻 CPU 根本不知道，只能先占位，
     # 再用一次 gather 在 GPU 上把它换成"上一批真采出来的那个 token"。
+    def _make_pinned_set(self, max_bs: int, max_tokens: int, max_blocks: int) -> dict:
+        # 一套锁页暂存：decode 按 max_bs 开，prefill 按 max_tokens 开。
+        d = {
+            "dec_ids": _pinned(max_bs, torch.int64),
+            "dec_pos": _pinned(max_bs, torch.int64),
+            "dec_slot": _pinned(max_bs, torch.int32, fill=-1),
+            "dec_csl": _pinned(max_bs, torch.int32),
+            "dec_remap": _pinned(max_bs, torch.int32, fill=-1),
+            "pre_ids": _pinned(max_tokens, torch.int64),
+            "pre_pos": _pinned(max_tokens, torch.int64),
+            "pre_slot": _pinned(max_tokens, torch.int32, fill=-1),
+            "pre_cuq": _pinned(max_bs + 1, torch.int32),
+            "pre_cuk": _pinned(max_bs + 1, torch.int32),
+            "h_temp": _pinned(max_bs, torch.float32),
+            "h_top_p": _pinned(max_bs, torch.float32),
+            "h_top_k": _pinned(max_bs, torch.int32),
+            "h_min_p": _pinned(max_bs, torch.float32),
+            "bt_pin": _pinned((max_bs, max_blocks), torch.int32, fill=-1),
+        }
+        # 每个张量配一个 numpy 视图：填数据走 numpy，拷贝走 copy_，共享同一块内存。
+        for k in list(d):
+            d[k + "_np"] = d[k].numpy() if d[k].dim() <= 2 else None
+        d["bt_cpu"] = d["bt_pin"].numpy()
+        return d
+
+    def _use_slot(self, slot: int) -> None:
+        # 把当前槽位的缓冲挂到属性名上，组包代码不用关心槽位。
+        d = self._bufs[slot]
+        for k, v in d.items():
+            if k.endswith("_np") and v is None:
+                continue
+            setattr(self, "_" + k, v)
+        # 页表那一份的视图名字是 _bt_cpu（不是自动推导出来的），单独处理。
+        self._bt_pin = d["bt_pin"]
+        self._bt_cpu = d["bt_cpu"]
+
+    def begin_step(self) -> None:
+        # 每步开头翻一次槽位；同一个 step 里 decode / prefill 两次组包共用同一个槽位。
+        self._buf_slot ^= 1
+        self._use_slot(self._buf_slot)
+
     def build_decode(
         self,
         seqs: list[SeqSchedule],
@@ -215,7 +205,6 @@ class Batch:
     ) -> None:
         # 真实并发数（可能小于 CG 档位）。
         bs = len(seqs)
-        self._wait_h2d()
         ids_np, pos_np = self._dec_ids_np, self._dec_pos_np
         slot_np, csl_np = self._dec_slot_np, self._dec_csl_np
         remap_np = self._dec_remap_np
@@ -269,8 +258,6 @@ class Batch:
             self.input_ids[:n_row].copy_(
                 torch.where(valid, picked, self.input_ids[:n_row])
             )
-        # 记一笔：本批的输入拷贝落地之后，CPU 才能安全覆盖锁页缓冲。
-        self._h2d_event.record()
 
         # 序列 id 序列：下面两个同步函数靠它判断「换批了没有」。
         sid = tuple(s.seq_id for s in seqs)
@@ -338,7 +325,6 @@ class Batch:
         else:
             self._gpu_bt_ids = ()
         self._sync_sampling(seqs)
-        self._h2d_event.record()
         return n_tokens, max_q, max_k, has_cache
 
     # 页表同步。这是全套代码里最「抠」的一处：用指纹判断整行是否变化，尽量只拷变化的部分。
