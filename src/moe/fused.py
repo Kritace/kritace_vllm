@@ -112,7 +112,7 @@ def _cutlass(
         hidden_states.dtype,
         quant_scales=None,
         output=out,
-        # 【ep_size 恒为 1、ep_rank 恒为 0】因为 v5 不搬 token：
+        # 【ep_size 恒为 1、ep_rank 恒为 0】因为这里不搬 token：
         # 每张卡拿到的都是完整的 token 批，融合核只管"按 expert_map 算本卡的专家"，
         # 跨卡求和由 block.py 出口的那次 all-reduce 负责。
         # 所以这个参数虽然存在（官方走 DeepEP 时要用），本项目始终传 1。

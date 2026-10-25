@@ -7,7 +7,7 @@
 #     TP/PP：同一条请求被切开，各卡**必须互相通信**才能算出结果；
 #     DP   ：各副本各跑各的请求，**彼此不需要任何通信**，只是"多开几份"。
 # 所以这里的通信只是"门面把请求投递给某个副本"，用 ZMQ 的 IPC 通道就够了，
-# 完全不需要 NCCL。这也解释了实测里 DP 的加速比接近线性（见 v4 实测）。
+# 完全不需要 NCCL。DP 的加速比接近线性也是这个原因（见 docs/05-基准与复现.md）。
 #
 # 【为什么要给每个副本改配置】三件事必须分开，否则副本之间会互相干扰：
 #     ① dp 归 1      —— 否则副本自己又会去开副本，递归下去；
@@ -244,7 +244,7 @@ class MPClient(EngineCoreClient):
 
         # 用临时目录放 IPC 文件：退出时不必清理端口。
         ctx = mp.get_context("spawn")
-        tmp = tempfile.mkdtemp(prefix="v4_dp_")
+        tmp = tempfile.mkdtemp(prefix="kritace_dp_")
         # 每个副本：切好的配置 + 一对 IPC 地址 + 一个 ready 事件。
         for r in range(self.dp_size):
             replica_cfg = self._replica_config(r)

@@ -222,7 +222,7 @@ class BlockManager:
             seq.block_table.append(self.allocate_fresh())
 
     # ------------------------------------------------------------------
-    # 投机解码（v6 新增）：一次追加多个 token
+    # 投机解码：一次追加多个 token
     #
     # can_append / may_append 的判据 `len(seq) % block_size == 1` 隐含了
     # "每步只追加 1 个 token"的假设，投机解码一次提交 K+1 个，

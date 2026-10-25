@@ -30,7 +30,7 @@ from .linear import (
     ColumnParallelLinear,
     MergedColumnParallelLinear,
     QKVParallelLinear,
-    # v5 新增：整份复制、不做任何切分与通信的线性层。
+    # 整份复制、不做任何切分与通信的线性层。
     # 目前两处用到 —— MoE 的 router（每卡都要打出**完全一致**的分数）与
     # EP 下的共享专家（每卡一份完整权重，归约顺序由 MoE 层自己安排）。
     ReplicatedLinear,

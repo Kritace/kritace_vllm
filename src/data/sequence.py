@@ -96,7 +96,7 @@ class Sequence:
     ignore_eos: bool = False
     last_token: int = 0
 
-    # --- 投机解码（v6）---
+    # --- 投机解码 ---
     # 本步由草稿生成的候选 token；为空表示退化为普通 decode。
     spec_draft_ids: list[int] = field(default_factory=list)
     # 验证后被接受的草稿数 j；本步实际产出 j + 1 个 token。

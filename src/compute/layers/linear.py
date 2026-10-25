@@ -69,7 +69,7 @@ from ...distributed import (
 
 
 # ============================================================================
-# 【v5 新增：显式指定 tp 组】原来所有并行层都只能"读环境里的 TP 组"。
+# 【可以在构造时显式指定 tp 组】否则所有并行层只能"读环境里的 TP 组"。
 # MoE 引入了新情况：**同一个进程里存在两套切法** ——
 #     Attention 按环境 TP 组切；
 #     EP 下的共享专家要求"不切"（tp_size=1）；
@@ -82,7 +82,7 @@ def _tp_meta(tp_size: int | None) -> tuple[int, int]:
     # 无论哪条分支都要先取一次组：即使是"传 1 不切"，也需要组对象来对齐 rank 语义
     # （后面 MoE 那边还要用它做 all-reduce）。
     tp = get_tp_group()
-    # None = 跟随环境里的 TP 组（默认行为，与 v4 一致）。
+    # None = 跟随环境里的 TP 组（默认行为）。
     if tp_size is None:
         return tp.size, tp.group_rank
     # 显式 1 = 明确要求「不切分」：此时返回 (1, 0)，所有 rank 都是同一份完整权重。
@@ -96,7 +96,7 @@ def _tp_meta(tp_size: int | None) -> tuple[int, int]:
     return tp.size, tp.group_rank
 
 
-# 【取分片 view】v5 多支持了"显式指定 tp 组"，所以签名长了；
+# 【取分片 view】因为支持"显式指定 tp 组"，所以签名长了；
 # 语义没变：返回的是 **narrow 出来的 view**，不是拷贝。
 def _shard(
     weight: torch.Tensor,
@@ -124,7 +124,7 @@ def _shard(
 
 
 # ============================================================================
-# 【v5 新增：整份复制的线性层】没有任何切分、也没有任何通信 ——
+# 【整份复制的线性层】没有任何切分、也没有任何通信 ——
 # 每个 rank 都持有完整的 [out, in] 权重与完整的 bias。
 #
 # 什么时候需要它：
@@ -200,8 +200,8 @@ class ColumnParallelLinear(nn.Module):
         self.in_size = in_size
         self.out_size = out_size
         self.gather_output = gather_output
-        # 【v5 的关键改动：把 tp 组在构造时钉死】v4 里每次切分都去读环境里的 TP 组；
-        # v5 允许显式传 tp_size（None=环境组、1=不切），所以在构造时解析一次并记住，
+        # 【把 tp 组在构造时钉死】否则每次切分都要去读环境里的 TP 组；
+        # 现在允许显式传 tp_size（None=环境组、1=不切），所以在构造时解析一次并记住，
         # 后续加载与 forward 都用这两个数 —— 避免"构造时说不切、加载时又去读了环境组"这种不一致。
         self._tp_size, self._tp_rank = _tp_meta(tp_size)
         self.output_size_per_partition = divide(out_size, self._tp_size)

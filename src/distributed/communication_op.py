@@ -11,7 +11,7 @@
 # 【两条通信路径，别搞混】
 #     TP（层内）：all_reduce / all_gather / reduce_scatter —— 集合通信，走 NCCL
 #     PP（层间）：send_tensors / recv_tensors        —— 点对点，跨 stage 传 hidden
-#   v4 的 TP 是"权重切分 + 每层一次 all-reduce"；PP 是"层切分 + stage 边界传激活"。
+#   TP 是"权重切分 + 每层一次 all-reduce"；PP 是"层切分 + stage 边界传激活"。
 #   两者的通信量量级完全不同（前者与 batch×hidden 成正比、每层一次；
 #   后者每步只有 hidden 大小的一两次），这也是实测里 TP 与 PP 表现相反的根因之一。
 #

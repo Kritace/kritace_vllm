@@ -1,5 +1,5 @@
 # ============================================================================
-# 【本文件是做什么的】控制面与计算面之间的 **CPU 数据结构**（v4 重写）。
+# 【本文件是做什么的】控制面与计算面之间的 **CPU 数据结构**。
 #
 # 【它在一条请求的路径上处在哪】
 #     Scheduler.schedule  →  ScheduledBatch（本进程内，直接持 Sequence 引用）
@@ -8,7 +8,7 @@
 #     Scheduler.update    →  EngineCoreOutput（增量 token）→ 回到门面 Engine
 #
 # 【为什么要有 to_wire 这一步】v3 是单进程，调度器给的 Sequence 可以直接被
-# 计算层读；v4 多进程，Sequence 里带着整条 token 历史、块表、引用计数等，
+# 计算层读；多进程下 Sequence 里带着整条 token 历史、块表、引用计数等，
 # 既大又不该跨进程传。所以在这里**裁剪出前向真正需要的字段**，
 # 顺带把"能共享的就共享"（块表不拷贝，见下）。
 #
@@ -126,7 +126,7 @@ def _decode_schedule(s: Sequence) -> "SeqSchedule":
 def _prefill_schedule(s: Sequence) -> "SeqSchedule":
     """prefill：只发本步 scheduled 的 token 切片，不含已缓存前缀和尚未调度的尾巴。
 
-    ⚠️ 投机验证（v6）的序列走的也是这里 —— 只有 prefill 通道的 varlen attention
+    ⚠️ 投机验证的序列走的也是这里 —— 只有 prefill 通道的 varlen attention
     能一次算 K+1 个 query，所以调度器把带草稿的序列挪进了 prefills。
     但它的本步输入不是"已调度切片"：草稿尚未被接受、还没写进 ``token_ids``，
     所以 ``token_ids[start:end]`` 只会切出 last_token 一个元素，前向只算

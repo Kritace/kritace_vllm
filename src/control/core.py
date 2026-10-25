@@ -118,7 +118,7 @@ class EngineCore:
             max_num_batched_tokens=self.config.max_num_batched_tokens,
             eos_token_id=self.eos_token_id,
             mix_prefill_decode=self.config.mix_prefill_decode,
-            # 【v6 的装配点】把两个投机配置从引擎配置下发给调度器：
+            # 【装配点】把两个投机配置从引擎配置下发给调度器：
             # K（每步草稿长度）与 n-gram 的最大后缀长度。
             # 注意草稿**在调度器里生成**（它需要拿到序列的 token_ids），
             # 而不是在 ModelRunner 里 —— 因为"这一步要预留多少 KV"必须在调度时就决定（K+1 而不是 1）。
@@ -169,7 +169,7 @@ class EngineCore:
         finally:
             torch.cuda.nvtx.range_pop()
 
-    # 一步完整推理。四段之间用注释分节，读的时候照着四段读。
+    # 一个 decode step 的完整流程：调度 → 发射 → 取结果 → 回灌。
     def step(self) -> tuple[list[EngineCoreOutput], int]:
         """
             执行一步推理。

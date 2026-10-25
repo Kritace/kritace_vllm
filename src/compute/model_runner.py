@@ -450,7 +450,7 @@ class ModelRunner:
             self._send_intermediate(hidden)
             return None
 
-        # 投机验证（v6）：需要**每个位置**的输出，而不是只取最后一个。
+        # 投机验证：需要**每个位置**的输出，而不是只取最后一个。
         # 走 prefill 通道是必然的 —— 只有 varlen attention 能一次算 K+1 个 query；
         # decode 通道的 flash_attn_with_kvcache 每序列只接受 1 个。
         if any(s.spec_draft_ids for s in seqs):

@@ -91,7 +91,7 @@ def set_pp_layer_ranges(layer_counts: list[int] | None) -> None:
     _PP_LAYER_RANGES = ranges
 
 
-# 跨 PP stage 传的中间激活。用 dict 而不是 tuple —— v4 里只有 hidden 与 residual 两项，按名字取比按下标清楚。
+# 跨 PP stage 传的中间激活。用 dict 而不是 tuple —— 只有 hidden 与 residual 两项，按名字取比按下标清楚。
 class IntermediateTensors(dict[str, torch.Tensor]):
     """PP 边界上的 hidden_states / residual。"""
 

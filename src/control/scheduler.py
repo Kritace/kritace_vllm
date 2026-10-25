@@ -94,7 +94,7 @@ class Scheduler:
         self.eos = eos_token_id
         # 是否允许 prefill 与 decode 在同一步混合调度。
         self.mix_prefill_decode = mix_prefill_decode
-        # 投机解码（v6）：n-gram 草稿只靠 token 历史，在 CPU 侧零成本生成，
+        # 投机解码：n-gram 草稿只靠 token 历史，在 CPU 侧零成本生成，
         # 因此 drafter 留在调度器里，不必下沉到 Worker。
         # draft model 方案则需要写在 Worker 侧（它要跑前向）。
         self.spec_k = spec_k

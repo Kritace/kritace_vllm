@@ -101,7 +101,7 @@ class EngineConfig:
     # 显式写 'cutlass' / 'triton' 则在不可用时**启动即报错**，不会静默降级。
     moe_backend: Literal["auto", "cutlass", "triton"] = "auto"
 
-    # --- 投机解码（v6 新增）---
+    # --- 投机解码 ---
     # spec_draft 为空 = 关闭；"ngram" = 用序列自身的 n-gram 匹配（零额外模型）；
     # 其它值视为 draft 模型路径，必须与 target 同词表。
     # 三个字段的关系：`spec_draft` 选草稿来源、`num_speculative_tokens` 是每步草稿长度 K、

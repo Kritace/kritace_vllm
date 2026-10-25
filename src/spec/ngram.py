@@ -33,7 +33,7 @@ class NgramDrafter:
 
     # 【两个参数的取舍】max_n 大 ⇒ 匹配更精确但命中率更低（长后缀更难重复出现）；
     # min_n 是兜底：极端情况下哪怕只匹配 1 个 token 也可以给出一个草稿。
-    # 实测里 max_n=4 是重复文本与自然文本之间的折中（v6 的默认值就是这个）。
+    # 实测里 max_n=4 是重复文本与自然文本之间的折中（也是本项目的默认值）。
     def __init__(self, *, max_n: int = 4, min_n: int = 1) -> None:
         # 参数自检：min_n 至少为 1，且不能大于 max_n（否则下面的 range 是空的、永远匹配不上）。
         if min_n < 1 or max_n < min_n:

@@ -1,7 +1,7 @@
 # ============================================================================
 # 【本文件是做什么的】把 distributed/ 这一层的**对外接口**汇总到一个命名空间里。
 #
-# 【为什么要这么写】v4 的并行代码分成四个文件（进程组 / 通信原语 / 控制通道 /
+# 【为什么要这么写】并行代码分成四个文件（进程组 / 通信原语 / 控制通道 /
 #   PP 工具），但上层（Worker、Linear、ModelRunner）只该关心"有哪些能力"，
 #   不该关心它们分别放在哪个文件里。所以这里统一 re-export。
 #
@@ -32,7 +32,7 @@ from .control_channel import ControlChannel
 from .parallel_state import (
     destroy_distributed_environment,
     destroy_model_parallel,
-    # v5 新增的三个 EP 名字：
+    # EP 相关的三个名字：
     #     expert_parallel_enabled  —— 查"当前是否 EP"（MoE 侧决定 all-reduce 顺序）
     #     get_ep_group             —— 拿 EP 组（EP 时就是 TP 组，否则 size=1 占位组）
     #     set_expert_parallel      —— 唯一的下发开关（由 Worker 在初始化时调用）

@@ -10,7 +10,7 @@
 #   老代码里有 `from ...paths import HUGGINGFACE_HUB_CACHE` 这种写法，
 #   所以它必须是一个可导入的名字，不能改成函数调用。
 # ============================================================================
-"""Backward-compatible path helpers for v5 internals/tests."""
+"""Backward-compatible path helpers for internal modules and tests."""
 
 from __future__ import annotations
 

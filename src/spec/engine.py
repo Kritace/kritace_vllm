@@ -7,7 +7,7 @@
 # 因此可以在 CPU 上用假模型把整条链路单测掉
 # （tests/unit/test_spec_engine.py），这也是推荐的上手顺序。
 #
-# 位置对齐关系（v6 最容易被写错的地方，单独说明）：
+# 位置对齐关系（最容易写错的地方，单独说明）：
 #
 #   已有序列      t_1 ... t_L
 #   验证输入      [t_L, d_1, d_2, ..., d_K]     共 K+1 个位置
@@ -146,7 +146,7 @@ class SpecEngine:
         # 空序列说明调用方状态不对：至少要有一个已生成的 token 才能构造验证输入。
         if not token_ids:
             raise ValueError("token_ids 不能为空")
-        # ★ v6 最容易写错的一行（位置对齐）：
+        # ★ 最容易写错的一行（位置对齐）：
         #     输入  = [t_L, d_1, ..., d_K]        （K+1 个位置）
         #     输出  = pos 0 判 d_1、pos 1 判 d_2、…、pos K 给出"白送的那个"
         # 于是"j 个被接受"时统一写成 `emitted = draft[:j] + [argmax(logits[j])]`。

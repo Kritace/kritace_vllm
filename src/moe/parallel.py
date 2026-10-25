@@ -14,7 +14,7 @@
 #     因为每张卡拿到的都是完整 [T, H]，单卡只能算出**局部和**（只含自己那几个专家的贡献），
 #     出口一次 all-reduce 才是完整结果。
 #     DeepEP / PPLX 那种"用 all-to-all 把 token 搬到专家所在卡"的做法本项目**没有**做
-#     （见 docs/02-专家并行.md 第 4 节：v5 让 token 留在本地）。
+#     （token 留在本地、不搬，见 docs/04-MoE与并行.md）。
 #
 # 【共享专家带来的顺序约束】共享专家在每卡都是**完整一份**，
 #     所以必须先 all-reduce、再相加；顺序写反同一项会被加 ep 次（顺序写在 block.py）。
@@ -22,7 +22,7 @@
 # 【为什么后端要"探测"而不是写死】两个 fused 后端各有硬前提：
 #     cutlass（FlashInfer）—— 只编了特定 SM 的 kernel，新架构还要求 nvcc ≥ 12.8；
 #     triton              —— 自带 JIT，装得上就能跑。
-#     本机 4090D = SM 89 + CUDA 13，两者都可用，所以写成"自动探测 + 可显式指定"。
+#     SM 89 + CUDA 13 上两条路都能走，所以写成"自动探测 + 可显式指定"。
 #
 # ⚠️ 没有 CPU 回退路径：fused MoE 就是 GPU kernel，CPU 上直接不可用。
 # ============================================================================
@@ -90,7 +90,7 @@ def _nvcc_version() -> tuple[int, int] | None:
 
 # 【cutlass 可用的三个前提】架构在名单里 + flashinfer 装上了 + 新架构时 nvcc 够新。
 # 三者缺一就返回 False —— 注意这里**不抛异常**，"能不能用"是查询，"用不用"由 resolve 决定。
-# 本机 SM 89 在第 2 行就通过；换成 3090（SM 86）会直接返回 False。
+# SM 89 在第 2 行就通过；换成 3090（SM 86）会直接返回 False。
 def cutlass_moe_available(*, device: int | None = None) -> bool:
     sm = _sm_tag(device)
     if sm is None or sm not in _CUTLASS_SMS:

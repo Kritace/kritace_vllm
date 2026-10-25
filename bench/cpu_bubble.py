@@ -1,4 +1,4 @@
-"""测每步的 CPU 各段耗时（依赖 flash-attn：v6 原生路径硬依赖它；
+"""测每步的 CPU 各段耗时（依赖 flash-attn：原生路径硬依赖它；
 没有 flash-attn 的机器会自动走 src/compute/layers/_flash_attn_fallback.py）（B 的量级），以及 ZOS 下是否还有可填的气泡。
 
 用法::
@@ -40,7 +40,7 @@ PHASES: dict[str, list[float]] = {}
 
 
 def wrap(obj, name: str, label: str):
-    # v6 原生只有 update()；做过 ZOS 的分支才有 finish()。两边都能跑。
+    # 同步路径只有 update()；ZOS 路径是 finish()。两边都能跑。
     if not hasattr(obj, name):
         return
     fn = getattr(obj, name)
@@ -83,7 +83,7 @@ def main() -> None:
         wrap(core.executor, "run", "run")
         wrap(core.executor, "read_samples", "read")
         wrap(core.scheduler, "finish", "finish")
-        wrap(core.scheduler, "update", "finish")   # v6 原生路径
+        wrap(core.scheduler, "update", "finish")   # 同步路径
         from src.data.batch import ScheduledBatch
         from src.compute.batch import Batch
         wrap(ScheduledBatch, "to_wire", "to_wire")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""一键复现 ZOS 的三层证据（面试/答辩用）。
+"""一键复现 ZOS 的三层证据。
 
 跑 N 轮，每轮 KRITACE_ZOS=0/1 各一次（交错 A B A B），输出：
 

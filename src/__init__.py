@@ -1,27 +1,14 @@
-# ============================================================================
-# 【本文件是做什么的】包的公开入口：`from src import Engine, EngineConfig, SamplingParams`。
-# 三个名字都通过 file-level 的 `__getattr__`（下面的 importlib 逻辑）延迟导入 ——
-# 这样 `import src` 不会顺带把 torch / 引擎整条链拉起来（看 help 或做工具脚本时很省时间）。
-#
-# 【注意】上面的模块 docstring 里写的是 "kritace_vllm public API"，那是从 v4 原样带过来的
-# （v5 的公开 API 完全一致，没有变化），不是笔误 —— 但读到时不必怀疑版本。
-# ============================================================================
-
 """kritace_vllm public API: ``from src import Engine, EngineConfig, SamplingParams``."""
 
+# ============================================================
+# 包的公开入口：`from src import Engine, EngineConfig, SamplingParams`。
+# 三个名字通过 file-level 的 `__getattr__` 延迟导入，`import src` 不会拉起 torch。
+# ============================================================
 from __future__ import annotations
 
 import importlib
 from typing import TYPE_CHECKING, Any
 
-# ============================================================================
-# 【本文件是做什么的】包的公开入口：`from src import Engine, EngineConfig, SamplingParams`。
-# 三个名字都通过 file-level 的 `__getattr__`（下面的 importlib 逻辑）延迟导入 ——
-# 这样 `import src` 不会顺带把 torch / 引擎整条链拉起来（看 help 或做工具脚本时很省时间）。
-#
-# 【注意】上面的模块 docstring 里写的是 "kritace_vllm public API"，那是从 v4 原样带过来的
-# （v5 的公开 API 完全一致，没有变化），不是笔误 —— 但读到时不必怀疑版本。
-# ============================================================================
 __all__ = ["Engine", "EngineConfig", "SamplingParams"]
 
 if TYPE_CHECKING:
@@ -35,7 +22,6 @@ _LAZY = {
     "EngineConfig": (".config", "EngineConfig"),
     "SamplingParams": (".sampling_params", "SamplingParams"),
 }
-
 
 # 只有当前面所有属性查找都失败时，Python 才会调到这里。
 def __getattr__(name: str) -> Any:

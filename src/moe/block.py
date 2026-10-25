@@ -110,7 +110,7 @@ class SparseMoeBlock(nn.Module):
         shard_tp = 1 if self.use_ep else None
         self.shared_expert_gate = ReplicatedLinear(hidden, 1, bias=False)
         # gate 与 up 合并成一个矩阵乘（MergedColumnParallelLinear）：[shared_inter] * 2
-        # 表示输出维是两段拼接。合并的好处是少一次权重读取 —— decode 是访存瓶颈（见 v5 性能文档）。
+        # 表示输出维是两段拼接。合并的好处是少一次权重读取 —— decode 是访存瓶颈（见 docs/05-基准与复现.md）。
         self.shared_expert_gate_up = MergedColumnParallelLinear(
             hidden, [shared_inter] * 2, bias=False, tp_size=shard_tp
         )
