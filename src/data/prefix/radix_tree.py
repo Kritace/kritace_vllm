@@ -54,7 +54,7 @@ class RadixNode:
         self.children: dict[int, RadixNode] = {}
         # 与 key 一一对应的页号。长度必须与 key 相等 —— 这是本文件最重要的一条不变式。
         self.parent = parent
-        # 含义是"有多少条**活着的序列**经过我"（含经过的子路径），不是"有多少页"。
+        # 含义是"有多少条活着的序列经过我"（含经过的子路径），不是"有多少页"。
         self.key = key
         # 单调时钟：用 time.monotonic() 而不是 time.time()，不受系统时间调整影响。
         self.value = value
@@ -97,7 +97,7 @@ class RadixTree:
             child.access_time = time.monotonic()
             # 公共前缀长度。
             pl = _prefix_len(child.key, key)
-            # 关键分支：pl < len(child.key) 说明**在当前节点内部就分叉了**。
+            # 关键分支：pl < len(child.key) 说明在当前节点内部就分叉了。
             # 这时必须把它劈成两半（见 _split），否则这一段路径没法表达两个不同的走向。
             if pl < len(child.key):
                 new_node = self._split(child, pl)
@@ -177,7 +177,7 @@ class RadixTree:
         # 循环条件：凑够片数 或 堆空。
         while len(freed) < num_slots and leaves:
             node = heapq.heappop(leaves)
-            # 堆里可能有**过期**的条目（节点已经被别人摘了，或引用计数又涨上去了），
+            # 堆里可能有过期的条目（节点已经被别人摘了，或引用计数又涨上去了），
             # 所以弹出来还要再检查一遍，不能直接用。
             if node is self.root or node.ref_count > 0:
                 continue
@@ -220,7 +220,7 @@ class RadixTree:
         walk(self.root)
         return out
 
-    # 从树上摘掉一个节点。它**不改引用计数**，只改结构 ——
+    # 从树上摘掉一个节点。它不改引用计数，只改结构 ——
     # 调用方要先确认这个节点确实可以被摘（零引用）。
     def _remove(self, node: RadixNode) -> None:
         if node.parent is None or not node.key:

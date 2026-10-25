@@ -3,7 +3,7 @@
 #
 # 【为什么预计算表】每个位置的旋转角只与"位置 × 频率"有关，与输入无关 ⇒
 #     启动时算一次 `[max_position, head_dim]` 的表，前向只做查表与逐元素乘加。
-#     表是按 head_dim 建的，**所有层共用同一张**（层与层之间的 rope 参数相同）。
+#     表是按 head_dim 建的，所有层共用同一张（层与层之间的 rope 参数相同）。
 #
 # 【为什么强制 fp32】FlashInfer 的 rope 算子要求 cos/sin 表是 float32：
 #     位置编码的相位对精度敏感，bf16 表会在长上下文下明显劣化。
@@ -13,7 +13,7 @@
 # 【NeoX half-split 约定】频率只取偶数下标（head_dim/2 个），旋转时把向量前后两半配对，
 #     这是 NeoX 风格；与 GPT-J 的"相邻两两配对"不同。混用会导致输出轻微错误（不易察觉）。
 #
-# ⚠️ 目前只支持**全维旋转**（rotary_dim == head_dim）。部分旋转的模型需要在这里扩展，
+# ⚠️ 目前只支持全维旋转（rotary_dim == head_dim）。部分旋转的模型需要在这里扩展，
 #   否则会静默地旋转了不该旋转的维度。
 # ============================================================================
 
@@ -31,7 +31,7 @@ def build_cos_sin_cache(
     """构建 [max_pos, head_dim] 查找表：前 head_dim/2 列为 cos、后为 sin。"""
     # 只取偶数下标 → head_dim/2 个逆频率（NeoX half-split 约定）
     # inv_freq 是 RoPE 的核心：第 i 对维度对应的角频率是 base^(-2i/d)。
-    # arange 用步长 2（只取偶数维），因为 RoPE 是**成对**旋转的。
+    # arange 用步长 2（只取偶数维），因为 RoPE 是成对旋转的。
     inv_freq = 1.0 / (
         rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.float) / head_dim)
     )

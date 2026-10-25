@@ -2,7 +2,7 @@
 # 【本文件是做什么的】layers/ 的对外接口：把这一层的模块名统一从这里导出，
 # 上层（模型文件）只 import 这一个入口。
 #
-# 【为什么第一行要 import ops】`ops` 模块的作用是**注册自定义算子**（副作用），
+# 【为什么第一行要 import ops】`ops` 模块的作用是注册自定义算子（副作用），
 # 它自己不需要被任何人引用 —— 但必须被 import 一次，注册才会生效。
 # 所以这一行是刻意的（带 noqa 标记就是为了说明"看起来没用，其实必须留"）。
 #
@@ -31,7 +31,7 @@ from .linear import (
     MergedColumnParallelLinear,
     QKVParallelLinear,
     # 整份复制、不做任何切分与通信的线性层。
-    # 目前两处用到 —— MoE 的 router（每卡都要打出**完全一致**的分数）与
+    # 目前两处用到 —— MoE 的 router（每卡都要打出完全一致的分数）与
     # EP 下的共享专家（每卡一份完整权重，归约顺序由 MoE 层自己安排）。
     ReplicatedLinear,
     RowParallelLinear,

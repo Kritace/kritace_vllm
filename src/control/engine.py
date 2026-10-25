@@ -148,7 +148,7 @@ class Engine:
             return 0
         return self._client.engine_core.last_num_cached_tokens
 
-    # 换前缀缓存后端时**必须重建整条链**：新的索引结构意味着页池的语义变了，
+    # 换前缀缓存后端时必须重建整条链：新的索引结构意味着页池的语义变了，
     # 旧的调度器还攥着旧引用，继续用会读到已释放的对象。
     def reset_kv(self, prefix_backend: str | None = None) -> None:
         """
@@ -200,7 +200,7 @@ class Engine:
 
         # prompt 超长：截断，保留末尾部分。
         # prompt 超长时保留末尾 token，以尽量保留最近上下文。
-        # 超长 prompt 的处理策略：**截掉开头、保留末尾**，而不是截掉末尾。
+        # 超长 prompt 的处理策略：截掉开头、保留末尾，而不是截掉末尾。
         # 这不是随手选的：生成任务里"最近的上下文"信息量最大，
         # 保留末尾比保留开头更有用。但这也意味着最前面的指令可能被丢掉了。
         if len(token_ids) > self.context_len:
@@ -322,7 +322,7 @@ class Engine:
         seq = self.add_request(prompt, sp)
         emitted = 0
         # 每次 step 后增量解码已经新生成的 token。
-        # 注意这里等的是**这一条**序列完成，不是全调度器空 ——
+        # 注意这里等的是这一条序列完成，不是全调度器空 ——
         # 所以它可以在一个共享引擎上和其他请求共存。
         while not seq.is_finished:
             self.step()
@@ -334,7 +334,7 @@ class Engine:
             while emitted < seq.num_completion_tokens:
                 tid = seq.token_ids[seq.num_prompt_tokens + emitted]
                 emitted += 1
-                # 注意是**逐 token 解码**：多字节字符可能被切开，边界处会短暂出现乱码，
+                # 注意是逐 token 解码：多字节字符可能被切开，边界处会短暂出现乱码，
                 # 这是流式解码的固有现象（真实服务通常靠"保留尾部若干字节"来缓解）。
                 yield self.tokenizer.decode([tid])
 

@@ -1,22 +1,22 @@
 # ============================================================================
-# 【本文件是做什么的】MoE 的**三个辅助 kernel**（JIT 编的 CUDA 扩展）+ 纯 torch 回退。
+# 【本文件是做什么的】MoE 的三个辅助 kernel（JIT 编的 CUDA 扩展）+ 纯 torch 回退。
 #
 #     align              按专家把 token 重排成"每个专家一整块"，块数向上取整（grouped GEMM 的前置）
 #     silu_and_mul       融合 SwiGLU：up * silu(gate)，一步出结果
 #     moe_sum            把 [M*top_k, H] 按 top_k 归约回 [M, H]
-#     主 GEMM（专家自己的两段矩阵乘）**不在**这里 —— 交给 Triton / cutlass（见同目录 triton.py）
+#     主 GEMM（专家自己的两段矩阵乘）不在这里 —— 交给 Triton / cutlass（见同目录 triton.py）
 #
 # 【为什么用 JIT 现场编译】源码就在同目录的 `moe_kernels.cu`，用
 # `torch.utils.cpp_extension.load` 现编。好处是仓库不用分发二进制 wheel、
-# 也不受预编译 wheel 覆盖不到新架构的限制；代价是**第一次调用要编译几十秒**，
+# 也不受预编译 wheel 覆盖不到新架构的限制；代价是第一次调用要编译几十秒，
 # 之后命中 torch 的编译缓存。
 #
 # 【为什么每个辅助步骤都要带一个纯 torch 回退】这台机器能编扩展不代表别处能编。
 # 回退路径让"没有 CUDA / 编译失败"的环境照样能跑通测试与 CPU 对照，
 # 只是慢一些 —— 数值结果必须一致（`_align_torch` 与 kernel 是同语义的两份实现）。
 #
-# ⚠️ 所有临时张量都**按形状池化**，不是随手 torch.empty。
-#   目的不是"省一点分配开销"，而是让 **decode CUDA Graph 捕获时每步的分配次数固定** ——
+# ⚠️ 所有临时张量都按形状池化，不是随手 torch.empty。
+#   目的不是"省一点分配开销"，而是让 decode CUDA Graph 捕获时每步的分配次数固定 ——
 #   CG 重放要求地址稳定，vLLM 用的是同一个做法。
 # ============================================================================
 """JIT CUDA aux kernels for MoE: align / silu / moe_sum.
@@ -206,9 +206,9 @@ def moe_sum(mid: torch.Tensor, M: int, top_k: int) -> torch.Tensor:
 # 如果 token 顺序还是原始的路由顺序，tile 边界就会落在别人的专家上。
 #
 # 三个返回值：
-#     sorted_ids  —— 重排后每个位置放"原来的第几个 token"，长度是**容量**
+#     sorted_ids  —— 重排后每个位置放"原来的第几个 token"，长度是容量
 #     expert_ids  —— 每个 block 属于哪个专家（-1 表示这个 block 是空块）
-#     num_post    —— 重排后**真实**用到的长度（容量 ≥ num_post）
+#     num_post    —— 重排后真实用到的长度（容量 ≥ num_post）
 # 容量固定 + 长度可变，正是为了兼容 CUDA Graph（见文件头）。
 def moe_align_block_size(
     topk_ids: torch.Tensor,
@@ -294,7 +294,7 @@ def _align_torch(
     num_post = starts[-1:].contiguous()
     cap = align_capacity(n, num_experts, block_size)
     # 先整体填成"越界下标 n"：这些位置上的行会被 GEMM 跳过（配合 expert_ids=-1）。
-    # 用 n 而不是 -1 是因为这个值后面要拿去**当索引**取 hidden（索引必须非负）；
+    # 用 n 而不是 -1 是因为这个值后面要拿去当索引取 hidden（索引必须非负）；
     # -1 只出现在 expert_ids 里那种"按专家查表"的位置。
     sorted_ids = torch.full((cap,), n, dtype=torch.int32, device=device)
     n_blocks = (cap + block_size - 1) // block_size

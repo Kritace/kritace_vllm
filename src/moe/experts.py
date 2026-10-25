@@ -1,11 +1,11 @@
 # ============================================================================
-# 【本文件是做什么的】MoE 的**专家权重**：怎么放、怎么从 checkpoint 装进来、
+# 【本文件是做什么的】MoE 的专家权重：怎么放、怎么从 checkpoint 装进来、
 # 以及 EP 下「哪个专家在本卡、哪个在别人卡上」这张对照表。
 #
 # 【为什么权重是 3D 而不是"一个专家一个 nn.Linear"】
 #     w13: [本卡专家数, 2 × 中间维分片, hidden]
 #     w2 : [本卡专家数, hidden, 中间维分片]
-# 把同一层的专家**叠成一个连续张量**，fused kernel 才能一次算完所有专家 ——
+# 把同一层的专家叠成一个连续张量，fused kernel 才能一次算完所有专家 ——
 # 这就是"fused"的前提：专家号只是行索引，不是 60 次 kernel 启动。
 # 如果写成 60 个 nn.Linear，光启动开销就把 MoE 的优势吃掉了。
 #
@@ -21,7 +21,7 @@
 #     融合核看到 -1 就跳过这一路 —— 于是"单卡只算自己的专家"这件事不需要改 kernel，
 #     只是一次查表。代价是每张卡都要读完整 hidden（token 不搬家）。
 #
-# ⚠️ -1 只是**给融合核看的哨兵值**，不能拿去当 tensor 索引（torch 里 -1 会绕到最后一个专家）。
+# ⚠️ -1 只是给融合核看的哨兵值，不能拿去当 tensor 索引（torch 里 -1 会绕到最后一个专家）。
 # ============================================================================
 """Experts weights, EP map, and fused forward."""
 
@@ -46,7 +46,7 @@ def local_expert_range(num_experts: int, ep_size: int, ep_rank: int) -> tuple[in
 
 # 【全局 → 局部的对照表】形状 [num_experts]（全局长度），本卡持有的段填 0,1,2…，
 # 其余全填 -1。融合核用它把 "专家 7" 翻译成 "本卡第 3 个" 或 "不是我的"。
-# 注意表长是**全局**专家数 —— 每个 rank 拿到的表长度一样，只是填的内容不同。
+# 注意表长是全局专家数 —— 每个 rank 拿到的表长度一样，只是填的内容不同。
 def make_expert_map(
     num_experts: int,
     ep_size: int,
@@ -118,7 +118,7 @@ class Experts(nn.Module):
         super().__init__()
         ensure_divisibility(intermediate_size, parallel.tp_size)
         ensure_divisibility(num_experts, parallel.ep_size)
-        # global_num_experts 是**全局**专家数（配置里那个数），下面 self.num_experts 是
+        # global_num_experts 是全局专家数（配置里那个数），下面 self.num_experts 是
         # 本卡真正持有的个数 —— 两个数都要留，前者用来建 expert_map，后者用来建权重。
         self.global_num_experts = num_experts
         self.hidden_size = hidden_size
@@ -142,12 +142,12 @@ class Experts(nn.Module):
         self.w13_weight = nn.Parameter(
             torch.empty(self.num_experts, 2 * i, hidden_size)
         )
-        # w2：down_proj，形状 [本卡专家数, hidden, 中间维分片] —— 注意中间维在**最后一维**。
+        # w2：down_proj，形状 [本卡专家数, hidden, 中间维分片] —— 注意中间维在最后一维。
         self.w2_weight = nn.Parameter(torch.empty(self.num_experts, hidden_size, i))
         setattr(self.w13_weight, "weight_loader", self.weight_loader_w13)
         setattr(self.w2_weight, "weight_loader", self.weight_loader_w2)
         # 把 expert_map 注册成 buffer（而不是普通属性）：它能跟着 .to(device) / state_dict 走，
-        # 且 persistent=False 表示**不写进 checkpoint**（它可以从 ep_rank 现场算出来，没必要存）。
+        # 且 persistent=False 表示不写进 checkpoint（它可以从 ep_rank 现场算出来，没必要存）。
         # 先建在 CPU 上：权重加载阶段不需要它占显存，前向时才搬到 GPU。
         self.register_buffer(
             "expert_map",
@@ -166,7 +166,7 @@ class Experts(nn.Module):
             return None
         return expert_id - self.expert_start
 
-    # 【w13 的权重加载器】签名里的 expert_id 是**全局**专家号，由模型加载器逐个传进来。
+    # 【w13 的权重加载器】签名里的 expert_id 是全局专家号，由模型加载器逐个传进来。
     # 一个专家的加载要做三件事：①不是我的就跳过；②TP 时切中间维；③按文件名写进 up 段或 gate 段。
     def weight_loader_w13(
         self,
@@ -182,7 +182,7 @@ class Experts(nn.Module):
         # 本卡要保留的中间维分片大小（EP 下就是整个中间维）。
         shard = self.intermediate_size_per_partition
         # 沿中间维（dim 0）取属于本 rank 的那一片。
-        # 注意这里切的是**加载进来的完整权重**，与本卡是否 EP 无关 —— TP 才需要切。
+        # 注意这里切的是加载进来的完整权重，与本卡是否 EP 无关 —— TP 才需要切。
         piece = loaded_weight.narrow(0, self.tp_rank * shard, shard)
         # 写进目标参数：先选本卡第 local 个专家，再按 up/gate 选前段或后段。
         dest = param.data[local, _w13_slice(weight_name, shard)]
@@ -246,7 +246,7 @@ class Experts(nn.Module):
         self.w2_weight.data.copy_(loaded[:, :, start : start + shard])
 
     # ============================================================================
-    # 前向：查表翻译专家号 → 交给 fused kernel → 返回本卡的**局部和**。
+    # 前向：查表翻译专家号 → 交给 fused kernel → 返回本卡的局部和。
     # 跨卡求和不在这里做，由 block.py 在正确的时机发起 all-reduce。
     # ============================================================================
     def forward(

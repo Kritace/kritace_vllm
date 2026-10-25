@@ -14,7 +14,7 @@
 #     期间所有 decode 请求都卡住（尾延迟）。按 token 预算切块后，
 #     长 prefill 可以分几步做完，中间穿插 decode。
 #
-# ⚠️ 调度器是**唯一**决定"谁能上、谁被抢占"的地方；
+# ⚠️ 调度器是唯一决定"谁能上、谁被抢占"的地方；
 #   显存账（是否需要抢占）由它配合 BlockManager 判断，模型侧不参与。
 # ============================================================================
 
@@ -38,9 +38,9 @@ _SPEC_DEBUG = bool(os.environ.get("KRITACE_SPEC_DEBUG"))
 
 
 # 调度器自身的状态很少：两条队列 + 一个 KV 管理器。真正复杂的都在下面几个私有方法里。
-# 队列的**顺序是有语义的**，改顺序会改变行为：
+# 队列的顺序是有语义的，改顺序会改变行为：
 #   waiting 是 FIFO（保证公平、不被饿死）；
-#    running 的**队尾**是抢占时优先牺牲的位置。
+#    running 的队尾是抢占时优先牺牲的位置。
 # ZOS 账本用到的两个小记录。只是"快照"，不持有任何 GPU 资源。
 @dataclass
 class _StepSeq:
@@ -122,7 +122,7 @@ class Scheduler:
 
     # 新请求一律先进 waiting；状态改成 WAITING 是给外部（如 postprocess）判断用的。
     def add(self, seq: Sequence) -> None:
-        # publish=False 是关键：被抢占的序列**并没有真正结束**，后面还要重来一遍。
+        # publish=False 是关键：被抢占的序列并没有真正结束，后面还要重来一遍。
         # 此刻把它的块发布进前缀索引没有意义 —— 反而可能让别的请求命中一段"马上要被释放"
         # 的内容。只有真正 FINISHED 的序列才值得发布。
         seq.status = SequenceStatus.WAITING
@@ -143,13 +143,13 @@ class Scheduler:
             p = [*p, *spec]
         return ScheduledBatch(prefills=p, decodes=d)
 
-    # 这里**只管序列数预算**，不管 token 预算 —— token 预算由各循环自己逐条累加判断。
+    # 这里只管序列数预算，不管 token 预算 —— token 预算由各循环自己逐条累加判断。
     # 分开的原因是：prefill 吃的 token 数是不确定的（可能几十上百），
     # decode 恰好是 1，没法在统一出口上判。
     def _room(self, prefills: list[Sequence], decodes: list[Sequence]) -> bool:
         return len(prefills) + len(decodes) < self.max_num_seqs
 
-    # "尝试"两字的含义：它可能失败（页池不够），失败时**不抛异常也不部分分配**。
+    # "尝试"两字的含义：它可能失败（页池不够），失败时不抛异常也不部分分配。
     # 先看 block_table 是否已有内容：非空说明这条序列的 KV 还在（刚才被调度过），
     # 直接复用。若重复分配，既会漏页，也会把已有的前缀丢掉。
     def _try_alloc(self, seq: Sequence) -> bool:
@@ -169,7 +169,7 @@ class Scheduler:
     ) -> int:
         # 循环条件要连着下面一起看：序列数没超、且下面还有 token 预算检查。
         while self.running and self._room(prefills, decodes):
-            # 从**队头**取（FIFO）。取出来先不放回去 —— 万一它自己也被抢占，
+            # 从队头取（FIFO）。取出来先不放回去 —— 万一它自己也被抢占，
             # 就该留在 waiting 里，不能同时存在于 running。
             seq = self.running.popleft()
             sid = seq.seq_id
@@ -240,7 +240,7 @@ class Scheduler:
             tokens_used += n_new
 
         # 把本轮真正跑成的序列放回 running。
-        # extendleft 是往队首**逐个**塞，顺序会翻转 → 所以要先反着迭代一次。
+        # extendleft 是往队首逐个塞，顺序会翻转 → 所以要先反着迭代一次。
         if decodes:
             self.running.extendleft(reversed(decodes))
 
@@ -259,7 +259,7 @@ class Scheduler:
         if not self.waiting or not self._room(prefills, decodes):
             return tokens_used
 
-        # 每轮最多只允许**一个**序列处于"半截 prefill"状态。
+        # 每轮最多只允许一个序列处于"半截 prefill"状态。
         # 否则页池会被一群"都还没产出第一个 token、但都已经占着页"的序列塞满，
         # 结果是所有人都在等、没人能出 token（活锁）。
         # 记录已产生的部分 prefill chunk 数量。
@@ -300,7 +300,7 @@ class Scheduler:
                 continue
 
             # 两种模式的差别就体现在这里（allow_trailing_partial）：
-            #   prefill 优先模式：本轮已经有 prefill 了，就**不允许**再塞一条会被切开的
+            #   prefill 优先模式：本轮已经有 prefill 了，就不允许再塞一条会被切开的
             #   混合模式：允许最后一条被切开，尽量把 token 预算填满、不浪费这一步
             # 如果不允许在已有 prefill 后追加部分 chunk，且当前预算不足，则停止拉取。
             if remaining < need and prefills and not allow_trailing_partial:
@@ -318,7 +318,7 @@ class Scheduler:
             seq.zos_start_pos = -1
             tokens_used += chunk
 
-            # 这一块算完恰好把 prompt 走完 → 本序列本轮**需要采样**（要吐第一个 token）。
+            # 这一块算完恰好把 prompt 走完 → 本序列本轮需要采样（要吐第一个 token）。
             # 本步完成后 prompt 全部进入缓存：转入运行队列，本步需采样。
             if seq.num_cached_tokens + chunk == seq.num_tokens:
                 seq.need_sample = True
@@ -348,14 +348,14 @@ class Scheduler:
         #    保证一轮里的 prefill 都是完整的，行为可预测、延迟好估算。
         # prefill 优先模式下，不允许在已有 prefill 后追加部分 chunk。
         self._pull_prefill_chunk(prefills, decodes, 0, allow_trailing_partial=False)
-        # 有 prefill 可做 → 本轮**只**做 prefill，decode 一个都不跑（注意返回的是空 decodes）。
+        # 有 prefill 可做 → 本轮只做 prefill，decode 一个都不跑（注意返回的是空 decodes）。
         if prefills:
             return prefills, []
         self._schedule_decode(prefills, decodes, 0)
         return [], decodes
 
     # ==================== 策略 B：混合调度（v3 默认）====================
-    # 先尽力安排 decode，再用**剩下来**的 token 预算去拉 prefill。
+    # 先尽力安排 decode，再用剩下来的 token 预算去拉 prefill。
     # 特点：decode 的 ITL 稳定（老请求优先），长 prompt 靠剩余预算一点点推进 ——
     #       既不会被饿死，也不会把 decode 挤走。这是连续批处理想要的那个效果。
     def _schedule_mixed(self) -> tuple[list[Sequence], list[Sequence]]:
@@ -366,7 +366,7 @@ class Scheduler:
         used = self._schedule_decode(prefills, decodes, 0)
         # 有 decode 跑成了 → 把剩下的 token 预算花在 prefill 上，不浪费这一轮。
         if decodes:
-            # 投机验证的 batch 布局是**定宽** [bs, K+1]（见 model_runner._spec_verify），
+            # 投机验证的 batch 布局是定宽 [bs, K+1]（见 model_runner._spec_verify），
             # 混入普通 prefill 会让定宽切片错位。所以有草稿的这一步不再拉新请求，
             # 等验证结束、草稿被消费后，下一步再正常拉取。
             if not any(s.spec_draft_ids for s in decodes):
@@ -490,7 +490,7 @@ class Scheduler:
                 )
             )
 
-        # 与 _update_batch 末尾同样的记账，**不能省**：
+        # 与 _update_batch 末尾同样的记账，不能省：
         # 序列结束后必须从 running 里摘掉。少了这一步，FINISHED 的序列会被
         # 下一步重新调度、重新挂草稿，而它的 KV 账本已在 deallocate 里清零
         # （num_cached_tokens=0、block_table 为空）—— 组包侧的
@@ -547,7 +547,7 @@ class Scheduler:
         self, sched: ScheduledBatch, n_p: int, n_d: int, slot: int, metric: int
     ) -> None:
         # 快照：num_scheduled_tokens 会在下一次 schedule 被改写，
-        # 而回灌发生在下一次 schedule **之后**，所以必须在这里存下来。
+        # 而回灌发生在下一次 schedule 之后，所以必须在这里存下来。
         dec = [_StepSeq(s, s.num_scheduled_tokens) for s in sched.decodes]
         pre = [_StepSeq(s, s.num_scheduled_tokens) for s in sched.prefills]
         slots: dict[int, int] = {}
@@ -615,7 +615,7 @@ class Scheduler:
         finished: set[int] = set()
         outputs: list[EngineCoreOutput] = []
 
-        # zip 依赖两边顺序**完全一致**。这个顺序是在执行器里约定的
+        # zip 依赖两边顺序完全一致。这个顺序是在执行器里约定的
         # （decode 的 id 在前、prefill 的在后）。顺序错了不会报错，
         # 只会把 token 装到错误的序列上 —— 这类 bug 极难定位。
         for r, token_id in zip(recs, token_ids):
@@ -624,7 +624,7 @@ class Scheduler:
             # 它那一格 KV 写就写了，反正块要还；不能再追加 token、也不能重复结束。
             if seq.status == SequenceStatus.FINISHED:
                 continue
-            # 用**快照**里的 token 数，而不是 seq.num_scheduled_tokens ——
+            # 用快照里的 token 数，而不是 seq.num_scheduled_tokens ——
             # 后者可能已被下一批的 schedule 改写（ZOS 才有这种情况）。
             seq.num_scheduled_tokens = r.num_tokens
             # 先把"本步写进去的 token"记进账本，再同步前缀索引 —— sync_prefix 内部

@@ -1,6 +1,6 @@
 # ============================================================================
 # 【本文件是做什么的】注意力层的三段：输入打包 → 算子调用 → 模块封装。
-#     AttnInputs      传给算子的**全部**输入（NamedTuple，防止传参错位）
+#     AttnInputs      传给算子的全部输入（NamedTuple，防止传参错位）
 #     AttnMetadata    本次前向的注意力元信息（块表、长度等），用 context manager 装好
 #     attention       `torch.library.custom_op` 注册的自定义算子（含 fake 实现）
 #     Attention       模型侧使用的 nn.Module 壳
@@ -43,7 +43,7 @@ except ImportError:  # pragma: no cover - 取决于机器
 
 from ..kv_ops import store_kvcache
 
-# 传给 attention 算子的**全部**输入。做成 NamedTuple 是为了传参时不容易写错顺序。
+# 传给 attention 算子的全部输入。做成 NamedTuple 是为了传参时不容易写错顺序。
 class AttnInputs(NamedTuple):
     # 本步 token 的 KV 该写进哪个物理位置。-1 表示跳过（padding 行）。
     slot_mapping: torch.Tensor
@@ -102,7 +102,7 @@ def attention(
     num_qo_heads: int,
     num_kv_heads: int,
     head_dim: int,
-# 返回的是**打平**后的输出 [总token数, 头数×头维]，与输入 q 的语义对应。
+# 返回的是打平后的输出 [总token数, 头数×头维]，与输入 q 的语义对应。
 ) -> torch.Tensor:
     meta = _ATTN_META
     assert meta is not None, "attention_context() not active"

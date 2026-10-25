@@ -14,7 +14,7 @@
 #     于是按若干个 batch 档位各捕一张图，运行时不匹配的步就补到最近的档位
 #     （多算几行 padding 换"不用重新捕获"）。
 #
-# ⚠️ PP 场景下 recv/send 必须在图**外**：通信与计算的重叠是流水线效率的来源，
+# ⚠️ PP 场景下 recv/send 必须在图外：通信与计算的重叠是流水线效率的来源，
 #   把通信录进图会让它的发生时机被固定，失去重叠机会。
 # ============================================================================
 
@@ -125,7 +125,7 @@ def zos_stats_dump() -> str:
 # 这样进入推理期后不再有任何"第一次"的开销，延迟才不会抖。
 class ModelRunner:
     # 构造期做完三件事：预分配输入张量、捕获 CUDA Graph、编译 prefill 图。
-    # 顺序无所谓，但**都必须在第一个请求进来之前完成** ——
+    # 顺序无所谓，但都必须在第一个请求进来之前完成 ——
     # 捕获 graph 要几百毫秒、编译要几百毫秒到几秒，放到推理期就是一次巨大卡顿。
     def __init__(
         self,
@@ -161,13 +161,13 @@ class ModelRunner:
 
         # ---------- 输入张量的预分配（v3「输入管线」优化的落点）----------
         # 三行分别算：最大序列数、单序列最多占多少页、以及下面 Batch 的总容量。
-        # max_bs 要 min(max_num_seqs, 256) —— 因为 CUDA Graph 要为**每个** batch size
+        # max_bs 要 min(max_num_seqs, 256) —— 因为 CUDA Graph 要为每个 batch size
         # 各捕获一张图。上限开太大（比如 1024）会把启动时间与显存拖垮。
         max_bs = min(config.max_num_seqs, 256)
         max_blocks = (config.context_len + self.block_size - 1) // self.block_size
         self.max_bs = max_bs
         # 一次把整个输入缓冲池建好：input_ids / positions / slot_mapping / 页表 / 采样参数
-        # 全部是预分配的持久张量。之后每轮只是往这些张量里**写**数据，不再有分配动作。
+        # 全部是预分配的持久张量。之后每轮只是往这些张量里写数据，不再有分配动作。
         self.batch = Batch(
             max_bs=max_bs,
             max_tokens=max(config.max_num_batched_tokens, max_bs),
@@ -193,7 +193,7 @@ class ModelRunner:
         # 采样在 GPU 上算完只得到几十个 token id，但 CPU 必须拿到它才能推进请求状态。
         # 朴素写法（直接同步取回）会让整条流水线停下来等 GPU 算完采样。
         # 这里的做法：专用 copy stream + 锁页内存，让"拷回"与"下一轮前向"重叠起来。
-        # ZOS：采样结果必须**双缓冲**。
+        # ZOS：采样结果必须双缓冲。
         #   slot=0 是"下一步要收的"，slot=1 是"刚发射、正在 GPU 上算的"。
         # 只有一块的话，第 t 步发射时会把第 t-1 步还没取走的 token 覆盖掉。
         self._copy_event = [torch.cuda.Event(), torch.cuda.Event()]
@@ -239,7 +239,7 @@ class ModelRunner:
             ),
         )
 
-    # 下游 / 上游的**组内**序号：NCCL 点对点认的是这个口径，不是 WORLD rank。
+    # 下游 / 上游的组内序号：NCCL 点对点认的是这个口径，不是 WORLD rank。
     def _pp_dst(self) -> int:
         return self._pp_group.next_group_rank
 
@@ -300,7 +300,7 @@ class ModelRunner:
             block_tables=self.batch.block_tables[:bs],
         )
 
-    # CG 图里执行的**纯计算体**：不含 PP 的收 / 发，收发留在图外。
+    # CG 图里执行的纯计算体：不含 PP 的收 / 发，收发留在图外。
     def _decode_body(self, bs: int):
         """仅本地 compute；PP recv/send 在 replay 前后执行。"""
         # 非首段要先拿到上游的 hidden 与 residual。
@@ -369,7 +369,7 @@ class ModelRunner:
             # eager 路径：现开缓冲收上游。
             it = self._recv_intermediate(bs) if not self.is_first_pp else None
             with attention_context(self._meta):
-                # eager 前向：与 graph 路径**同一个 model 调用**，输入切片也一样。
+                # eager 前向：与 graph 路径同一个 model 调用，输入切片也一样。
                 hidden = self.model(
                     self.batch.input_ids[:bs],
                     self.batch.positions[:bs],
@@ -417,11 +417,11 @@ class ModelRunner:
 
         # 走编译图需要同时满足两个条件：
         #   ① 配置里开了 torch.compile 并且已经构建成功
-        #   ② 这批请求**没有任何前缀缓存命中**
+        #   ② 这批请求没有任何前缀缓存命中
         # 第 ② 条是关键约束：一旦命中前缀，Q 的长度（本轮新增）和 K 的长度（含前缀）
         # 就不再相等，而编译图把形状写死了（见 _prefill_forward）→ 会算出错误结果。
-        # 走编译图的两个前提，第 ② 条这里再强调一次：**没有任何前缀命中**。
-        # 走编译图的两个前提：开了 compile，且**这一批没有任何前缀命中**。
+        # 走编译图的两个前提，第 ② 条这里再强调一次：没有任何前缀命中。
+        # 走编译图的两个前提：开了 compile，且这一批没有任何前缀命中。
         if self.prefill_fn is not None and all(
             s.num_cached_tokens == 0 for s in seqs
         ):
@@ -450,7 +450,7 @@ class ModelRunner:
             self._send_intermediate(hidden)
             return None
 
-        # 投机验证：需要**每个位置**的输出，而不是只取最后一个。
+        # 投机验证：需要每个位置的输出，而不是只取最后一个。
         # 走 prefill 通道是必然的 —— 只有 varlen attention 能一次算 K+1 个 query；
         # decode 通道的 flash_attn_with_kvcache 每序列只接受 1 个。
         if any(s.spec_draft_ids for s in seqs):
@@ -553,12 +553,12 @@ class ModelRunner:
         return self._sample(bs, logits)
 
     # ======================== 采样 ========================
-    # 采样参数（温度 / top-p / top-k / min-p）**按请求**打包成张量一起送进 kernel，
+    # 采样参数（温度 / top-p / top-k / min-p）按请求打包成张量一起送进 kernel，
     # kernel 内部按行各取各的参数 —— 好处是不用"按参数分组跑多趟"。
     # 另外，"这批是不是全都 greedy"这类判断改由 CPU 侧预先算好一个布尔量传进来，
     # 避免为了在 forward 里做分支而触发 GPU→CPU 同步（一次同步能吃掉几十微秒）。
     def _sample(self, bs: int, logits: torch.Tensor) -> torch.Tensor:
-        # 一次性把 logits 和**每请求各自的**采样参数传进去。
+        # 一次性把 logits 和每请求各自的采样参数传进去。
         return self.sampler(
             logits,
             self.batch.temperatures[:bs],
@@ -684,7 +684,7 @@ class ModelRunner:
         it = self._make_pp_buffer(n) if not self.is_first_pp else None
         # 记录阶段：torch.compile 是"首次调用时才编译"的，所以必须先用一批假输入跑通一次把
         # 编译触发掉。否则第一个真实请求会替我们付这笔编译开销（几百毫秒到几秒的卡顿）。
-        # 热身是**真的**在写 KV cache（假输入也是真 token），完了必须 zero_() 清干净，
+        # 热身是真的在写 KV cache（假输入也是真 token），完了必须 zero_() 清干净，
         # 否则残留的垃圾数据会被后续请求的 attention 读到 → 输出静默错乱。
         # 必须真的跑一次 —— torch.compile 是首次调用才编译的。
         with attention_context(self._meta), torch.inference_mode():

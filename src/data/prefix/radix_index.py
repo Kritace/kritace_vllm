@@ -57,7 +57,7 @@ class RadixPrefixIndex:
             return []
         # 一次算完所有块的哈希链 —— 树的接口是按"整条 key"匹配的，不是逐块喂。
         key = self._block_hashes(seq, n_full)
-        # 树上找最长前缀，返回的 cached_ids 是**该路径上每个节点的页号**。
+        # 树上找最长前缀，返回的 cached_ids 是该路径上每个节点的页号。
         cached_ids, _ = self.tree.match_prefix(key)
         hit: list[int] = []
         # 树给出的是"结构上匹配"，还必须逐项校验内容与页状态 —— 见下面三个 break。
@@ -126,7 +126,7 @@ class RadixPrefixIndex:
                 # 已经指向同一页 → 无需搬动。
                 if old_bid == new_bid:
                     continue
-                # 顺序必须是"先松开旧的、再认领新的"，而且注意这里传的是**页号**：
+                # 顺序必须是"先松开旧的、再认领新的"，而且注意这里传的是页号：
                 #   release_hit 会把旧页的引用计数减 1（减到 0 就回 free 或 cached），
                 #    acquire_hit 给规范页加 1。两边必须成对，只做一半就是引用计数泄漏。
                 pool.release_hit(old_bid)
@@ -179,7 +179,7 @@ class RadixPrefixIndex:
 
     # 这里没有做"每个叶节点只摘一片"的限制 ——
     # 一个叶节点可能覆盖很多页（压缩树的节点是一段路径），摘它就一次释放很多页。
-    # 所以返回值可能**多于** num_pages，调用方要能接受这个偏差。
+    # 所以返回值可能多于 num_pages，调用方要能接受这个偏差。
     def reclaim_pages(self, num_pages: int, pool: BlockManager) -> list[int]:
         """丢掉没人引用的冷叶子，返回可以送回 free 的页。一片叶子上的页必须一起走。"""
         # 请求 0 页 → 什么都不做。

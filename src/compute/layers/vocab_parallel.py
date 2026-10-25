@@ -1,37 +1,37 @@
 # ============================================================================
-# 【本文件是做什么的】TP 下的**词表并行**：Embedding（查表）与 LM Head（出 logits）。
+# 【本文件是做什么的】TP 下的词表并行：Embedding（查表）与 LM Head（出 logits）。
 #
 # 【为什么词表也要切】词表是模型里最大的一张表。以 Qwen3-0.6B 为例，
 # vocab = 151936、hidden = 1024、bf16 下光 embedding 就是约 311 MB，
 # lm_head 同量级（若权重共享则共用一份）。更关键的是 logits 的形状是
-# [batch, vocab]：不切词表的话，**每张卡都要算出并保存全量 logits**。
+# [batch, vocab]：不切词表的话，每张卡都要算出并保存全量 logits。
 # 按词表切 = 直接省显存，也把 GEMM 的输出维摊到多卡上。
 #
 # 【难点一：词表除不尽，而且还要对齐】151936 / tp_size 未必整除；
 # 就算整除，每卡分片也未必是 16 的倍数，而 GEMM 的输出维不对齐
-# 会让 Tensor Core 退化成慢路径。所以 `_pad_vocab_size` 做**两层向上取整**：
+# 会让 Tensor Core 退化成慢路径。所以 `_pad_vocab_size` 做两层向上取整：
 #     ① 先按 tp 均分并向上取整      ② 再把每卡分片凑到 multiple（默认 16）的倍数
 # 代价是多算/多存几行，换来的是对齐后的快路径。
 #
 # 【难点二：Embedding 的越界 token 怎么办】某个 token 不在本 rank 的词表区间内时，
 # 本 rank 查不了这张表。常规做法是「先查（拿到垃圾），再把不属于自己的位置清零
 # （mask [B, S, H] 三维张量），最后 all-reduce」。这里换了个做法：
-# 给权重**加一行全 0 的哑元行**，把越界 token 的索引改成 0，查表自然得到 0 向量。
-# 于是 mask 的对象从 [B, S, H] 降成 [B, S] 的**索引级**操作，
+# 给权重加一行全 0 的哑元行，把越界 token 的索引改成 0，查表自然得到 0 向量。
+# 于是 mask 的对象从 [B, S, H] 降成 [B, S] 的索引级操作，
 # 三阶浮点张量的访存全省掉了。
 #
 # 【难点三：Greedy 解码不该传全量 logits】标准前向要把各卡分片 all-gather 成
 # [batch, vocab] 的全量 logits —— vocab 十几万，这笔通信在多卡下非常可观。
-# 但贪心解码**只需要 argmax**，不需要 logits 本身。所以这里改成：
-# 每卡先在本地取 max 与它的全局索引，再 all-gather 这两个 **[batch] 的小张量**，
+# 但贪心解码只需要 argmax，不需要 logits 本身。所以这里改成：
+# 每卡先在本地取 max 与它的全局索引，再 all-gather 这两个 [batch] 的小张量，
 # 通信量下降三个数量级。
 #
 # 【⚠️ 三个容易踩的点】
 #     ① 哑元行让 Embedding 的权重行数比「均分」多 1 行，加载时要 `row_offset=1`
 #        跳过第 0 行。写错的话所有越界 token 都会读到你写进去的真实权重。
-#     ② 词表 padding 出来的那些行**没有真实内容**（参数内存是复用的，还留着垃圾值），
+#     ② 词表 padding 出来的那些行没有真实内容（参数内存是复用的，还留着垃圾值），
 #        所以加载时要显式 `zero_()`，argmax 时还要先置 -inf。
-#     ③ argmax 里 all-gather 的是 **vals / idx**，不是 logits —— 这是它省带宽的全部原因。
+#     ③ argmax 里 all-gather 的是 vals / idx，不是 logits —— 这是它省带宽的全部原因。
 #
 # 【读这个文件的顺序】
 #     _pad_vocab_size / _load_weight（两个共用工具：怎么补齐、怎么按行切）
@@ -56,7 +56,7 @@ from ...distributed import (
 # 包含 Embedding 层和 LM Head 层，针对显存带宽和通信开销做了优化。
 # ==============================================================================
 
-# 把词表大小补齐到「能被 tp 整除、且每卡分片是 multiple 的倍数」。返回的是**填充后**的大小。
+# 把词表大小补齐到「能被 tp 整除、且每卡分片是 multiple 的倍数」。返回的是填充后的大小。
 def _pad_vocab_size(vocab_size: int, tp_size: int, *, multiple: int = 16) -> int:
     """
         计算填充后的词表总大小。
@@ -94,7 +94,7 @@ def _load_weight(
     # 获取了当前进程所属的 TP 组对象，核心有 TP 有几张 GPU，还有当前 GPU 的 rank 号
     tp = get_tp_group()
     # 计算每张 GPU 具体需要负责存储和处理多少个词
-    # 每卡负责多少行（这里用的是**填充后**的均分值）。
+    # 每卡负责多少行（这里用的是填充后的均分值）。
     # 计算每张 GPU 具体需要负责存储和处理多少个词
     per_partition = padded_vocab // tp.size
     # 计算当前 Rank 负责的词表起始索引
@@ -115,7 +115,7 @@ def _load_weight(
             loaded_weight[start : start + seg_len]
         )
         
-    # 越界 / 填充部分：必须**显式清零**。
+    # 越界 / 填充部分：必须显式清零。
     if seg_len < per_partition:
         # 如果切片越界，将剩余未填充的行原地清零
         # 参数内存是复用的，不清零就会残留上一轮的垃圾值。
@@ -131,7 +131,7 @@ class VocabParallelEmbedding(nn.Module):
         进行 Mask 操作，将访存压力从 [B, S, H] 降维到了 [B, S]。
     """
 
-    # 权重实际分配 vocab/tp **+ 1** 行 —— 多出来的那一行就是哑元行。
+    # 权重实际分配 vocab/tp + 1 行 —— 多出来的那一行就是哑元行。
     def __init__(self, num_embeddings: int, embedding_dim: int):
         super().__init__()
         # 建层时就要确定切法，所以 TP 组必须在模型构建之前初始化好。
@@ -140,7 +140,7 @@ class VocabParallelEmbedding(nn.Module):
         self.embedding_dim = embedding_dim
         
         # 计算对齐后的总词表大小
-        # 先算对齐后的**总**词表大小：所有 rank 用同一个值，才能算出彼此一致的边界。
+        # 先算对齐后的总词表大小：所有 rank 用同一个值，才能算出彼此一致的边界。
         # 计算对齐后的总词表大小
         padded = _pad_vocab_size(num_embeddings, tp.size)
         
@@ -254,7 +254,7 @@ class ParallelLMHead(nn.Module):
         logits = torch.nn.functional.linear(hidden_states, self.weight, self.bias)
         # 代价最大的一步：把 [batch, vocab/tp] 拼成 [batch, vocab]。vocab 越大这笔通信越贵。
         logits = tensor_model_parallel_all_gather(logits, dim=-1)
-        # 截掉填充出来的列 —— 对外必须返回**真实词表宽度**的 logits。
+        # 截掉填充出来的列 —— 对外必须返回真实词表宽度的 logits。
         return logits[..., : self.vocab_size]
 
     def argmax(self, hidden_states: torch.Tensor) -> torch.Tensor:

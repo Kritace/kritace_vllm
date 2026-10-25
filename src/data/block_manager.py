@@ -135,7 +135,7 @@ class BlockManager:
         # 幂等保护：不在 cached 集合里就直接返回。
         if bid not in self.cached_ids:
             return
-        # 通知只能在**真正移出之前**发（下面第 88 行才 pop）。
+        # 通知只能在真正移出之前发（下面第 88 行才 pop）。
         # 索引清理逻辑需要读到这个页当前的 hash，先 pop 就读不到了。
         if notify and self.on_evict is not None:
             self.on_evict(bid)
@@ -172,7 +172,7 @@ class BlockManager:
             self.blocks[bid].ref_count = 1
             self.used_ids.add(bid)
 
-    # 释放一次引用。计数归零**不等于**页可以立刻给别人用 ——
+    # 释放一次引用。计数归零不等于页可以立刻给别人用 ——
     # 这里直接放回 free 并清掉指纹，是"不再保留缓存价值"的语义。
     def release_hit(self, bid: int) -> None:
         # 先把计数减掉再看，不能反过来。
@@ -209,13 +209,13 @@ class BlockManager:
             self.free_ids.append(bid)
 
     # 判断"再追加一个 token 需不需要新页"。
-    # 判据是 `len % block_size == 1`：跨入新块**之后**的那个 token 才需要新页。
+    # 判据是 `len % block_size == 1`：跨入新块之后的那个 token 才需要新页。
     # 写成 `== 0` 就晚了一格，会导致写越界。这个边界是本项目踩过的坑。
     def can_append(self, seq) -> bool:
         need_new = len(seq) % self.block_size == 1
         return (not need_new) or self.available_slots >= 1
 
-    # 真正占页。注意它和 can_append 必须用**同一个判据** ——
+    # 真正占页。注意它和 can_append 必须用同一个判据 ——
     # 两处不一致会造成"检查通过但没分配"或"分配了但没检查"。
     def may_append(self, seq) -> None:
         if len(seq) % self.block_size == 1:

@@ -1,13 +1,13 @@
 # ============================================================================
-# 【本文件是做什么的】把调度器给出的序列，**写进常驻 GPU 缓冲**。
+# 【本文件是做什么的】把调度器给出的序列，写进常驻 GPU 缓冲。
 # decode 走 build_decode，prefill 走 build_prefill；两者共用同一套缓冲。
 #
 # 【为什么要三块内存：numpy 视图 → pinned CPU 缓冲 → GPU】
 #   每步要送十几个小张量上去，如果逐个走 Python→tensor→copy，光"造张量"这件事
 #   就是每步固定成本。这里的做法是：
-#     ① 常驻的 **pinned CPU 缓冲** 各配一个 **numpy 视图** —— 填数据时直接写 numpy
+#     ① 常驻的 pinned CPU 缓冲 各配一个 numpy 视图 —— 填数据时直接写 numpy
 #        （切片赋值、np.arange），比逐元素建张量快得多；
-#     ② 每个张量只做**一次** `copy_(..., non_blocking=True)` 上去；
+#     ② 每个张量只做一次 `copy_(..., non_blocking=True)` 上去；
 #     ③ 因为缓冲是锁页的，这次拷贝可以和 GPU 计算重叠。
 #
 # 【为什么要"指纹"与"快照"】(这两处是这套代码里最抠的优化)
@@ -17,13 +17,13 @@
 #
 # 【为什么要 pad_to】CUDA Graph 是按档位录图的（1/2/4/8/16/…）。
 #   真实并发数落在一档之内时，多余的槽位也会被图算一遍，
-#   所以必须把它们写成**安全值**（见下）。
+#   所以必须把它们写成安全值（见下）。
 #
 # 【⚠️ 三个容易踩的点】
 #     ① padding 区必须是安全值：槽位 -1（写入内核跳过）、长度 0（不读 KV）、
-#        页表 -1（不访问物理页）。CG 重放**不会重写**这些区域，
+#        页表 -1（不访问物理页）。CG 重放不会重写这些区域，
 #        一旦是非法值就会静默污染别的序列的 KV。
-#     ② numpy 视图与 pinned 张量**共享内存**：写 numpy 就是写那块缓冲，
+#     ② numpy 视图与 pinned 张量共享内存：写 numpy 就是写那块缓冲，
 #        但必须在 `copy_` 之前完成；同时视图要被长期持有，不能被 GC 掉。
 #     ③ 页表的增量更新只在「长度 +1 且首尾页指纹吻合」时成立（页表只会追加）。
 #        换批、回退、抢占都会让它失效 —— 所以 `same` 判断不能省。
@@ -44,7 +44,7 @@ from ..data.batch import SeqSchedule
 from ..data.sequence import slots_for_range
 
 
-# 造一块**锁页**的 CPU 缓冲：H2D 能不能异步，取决于它是不是锁页内存。
+# 造一块锁页的 CPU 缓冲：H2D 能不能异步，取决于它是不是锁页内存。
 def _pinned(
     shape: int | tuple[int, ...],
     dtype: torch.dtype,
@@ -65,7 +65,7 @@ def _h2d(dst: torch.Tensor, src: torch.Tensor, n: int) -> None:
     dst[:n].copy_(src[:n], non_blocking=True)
 
 
-# GPU 侧常驻缓冲：一次按上限分配，之后**永不重新分配**（地址固定也是 CG 的前提）。
+# GPU 侧常驻缓冲：一次按上限分配，之后永不重新分配（地址固定也是 CG 的前提）。
 def _gpu(
     shape: int | tuple[int, ...],
     dtype: torch.dtype,
@@ -163,7 +163,7 @@ class Batch:
         # 采样参数快照：没变就跳过整段拷贝。
         self._samp_key: tuple | None = None
 
-        # 下面这一批 numpy 视图：**写数据走 numpy，拷贝走 copy_**，两者共享同一块内存。
+        # 下面这一批 numpy 视图：写数据走 numpy，拷贝走 copy_，两者共享同一块内存。
         self._dec_ids_np = self._dec_ids.numpy()
         self._dec_pos_np = self._dec_pos.numpy()
         self._dec_slot_np = self._dec_slot.numpy()
@@ -203,7 +203,7 @@ class Batch:
         max_csl = 0
         # 这个循环是每步 CPU 侧的主要工作：逐条算 4 个标量。
         for i, s in enumerate(seqs):
-            # 注意它是**每步**都要跑的 Python 循环 —— batch 很大时，它本身就会变成 CPU 瓶颈。
+            # 注意它是每步都要跑的 Python 循环 —— batch 很大时，它本身就会变成 CPU 瓶颈。
             pos = s.num_cached_tokens
             bt = s.block_table
             # 只取最后一个 token：decode 每次只喂一个新 token。
@@ -230,7 +230,7 @@ class Batch:
         _h2d(self.cache_seqlens, self._dec_csl, bs)
 
         # ---- ZOS：把占位行换成上一批真采出来的 token ----
-        # 这里**不需要任何同步**：上一批的采样核排在同一条 CUDA 流的前面，
+        # 这里不需要任何同步：上一批的采样核排在同一条 CUDA 流的前面，
         # gather 读到的必然是它的结果。这正是"CPU 不知道 token 也能接着跑"的关键。
         n_row = pad_to if pad_to is not None else bs
         if any_remap and prev_sampled is not None:
@@ -260,7 +260,7 @@ class Batch:
             self.block_tables[bs:pad_to].fill_(-1)
 
 
-    # prefill 组包：**紧凑打包**（不是 padding），并给出 Q / K 两条累积边界。
+    # prefill 组包：紧凑打包（不是 padding），并给出 Q / K 两条累积边界。
     def build_prefill(self, seqs: list[SeqSchedule]) -> tuple[int, int, int, bool]:
         ids = self._pre_ids_np
         positions = self._pre_pos_np
@@ -275,7 +275,7 @@ class Batch:
         n_tokens = 0
         # 逐序列把真实 token 首尾相接塞进同一段缓冲 —— 不按最长序列 padding。
         for i, s in enumerate(seqs):
-            # 起始位置 = 已缓存前缀长度。**不是 0** —— 这是 chunked prefill / 前缀命中下的关键点。
+            # 起始位置 = 已缓存前缀长度。不是 0 —— 这是 chunked prefill / 前缀命中下的关键点。
             start = s.num_cached_tokens
             # 本步这条序列要算多少 token。
             n = len(s.token_ids)
@@ -290,7 +290,7 @@ class Batch:
             )
             # Q 边界：只累计本步真正要算的 token。
             cu_q[i + 1] = cu_q[i] + n
-            # K 边界：**把已缓存的前缀也累计进去** —— attention 必须看得到全部历史。
+            # K 边界：把已缓存的前缀也累计进去 —— attention 必须看得到全部历史。
             cu_k[i + 1] = cu_k[i] + end
             # 记下最长 Q / 最长 K：flash-attn 需要它们来切块。
             max_q = max(max_q, n)

@@ -1,5 +1,5 @@
 # ============================================================================
-# 【本文件是做什么的】**一个 Worker = 一个进程 = 一张卡**。它是"这张卡上的一切"的
+# 【本文件是做什么的】一个 Worker = 一个进程 = 一张卡。它是"这张卡上的一切"的
 # 持有者：通信组、模型、KV 池、采样器、以及串起它们的 ModelRunner。
 #
 # 【它在整个启动链里的位置】
@@ -11,15 +11,15 @@
 #
 # 【为什么构造与初始化分两步】
 #   构造（__init__）只记身份与配置；真正的装配（initialize）在启动通信之后。
-#   序不能反：**先建进程组，再建模型** —— 因为权重切片要靠（TP/PP 的）组信息。
+#   序不能反：先建进程组，再建模型 —— 因为权重切片要靠（TP/PP 的）组信息。
 #
 # 【⚠️ 三个容易踩的点】
-#     ① `_probe_cg_footprint` 会**真的捕获一次 CUDA Graph**，所以它不便宜
+#     ① `_probe_cg_footprint` 会真的捕获一次 CUDA Graph，所以它不便宜
 #        （几百毫秒到数秒），而且必须在"还没有真 KV 池"的时候做 ——
 #        否则量出来的差值里混着页池。
 #     ② 探针用完必须把显存完整还回去（destroy → 删引用 → gc → empty_cache），
 #        少任何一步都会让后面真正建池时凭空少掉一块预算。
-#     ③ `execute_model` 与 `read_samples` 是**故意分开**的：
+#     ③ `execute_model` 与 `read_samples` 是故意分开的：
 #        前者只发射（异步），后者才同步取数 —— 分开才能让 H2D/D2H 与计算重叠。
 #
 # 【读这个文件的顺序】
@@ -92,7 +92,7 @@ class Worker:
         # 加载完模型后的显存基线 —— 测 CG 足迹时要拿它当零点。
         self._mem_baseline = 0
 
-    # 建通信环境。**必须在建模型之前调**，因为权重切片要靠组信息。
+    # 建通信环境。必须在建模型之前调，因为权重切片要靠组信息。
     def init_environment(self, init_method: str | None = None) -> None:
         from ..utils.cuda_env import apply_flashinfer_arch_list
 
@@ -146,7 +146,7 @@ class Worker:
             )
             set_pp_layer_ranges(counts)
 
-    # 决定这一进程用哪张**物理**卡。
+    # 决定这一进程用哪张物理卡。
     def _device_id(self) -> int:
         # device_ids 显式映射（如单卡调试 [0,0]）优先，否则用机内 local_rank。
         if self.config.device_ids is not None:
@@ -215,7 +215,7 @@ class Worker:
         # 最后统一搬 dtype 与设备，并切到 eval（关掉训练期行为）。
         return model.to(dtype=self.dtype, device=self.device).eval()
 
-    # 探针：量出 CUDA Graph 要额外占多少显存。这笔钱要从 KV 池的预算里**先扣掉**。
+    # 探针：量出 CUDA Graph 要额外占多少显存。这笔钱要从 KV 池的预算里先扣掉。
     def _probe_cg_footprint(self) -> int:
         # 复制一份配置来探测，避免污染真实配置。
         probe_config = copy.copy(self.config)
@@ -306,7 +306,7 @@ class Worker:
             self.model, self.kv, self.sampler, config=self.config, device=self.device
         )
 
-    # 只发射前向 + 异步 D2H，**不在这里等结果**（这样才和计算重叠）。
+    # 只发射前向 + 异步 D2H，不在这里等结果（这样才和计算重叠）。
     def execute_model(self, sched: SchedulerOutput) -> tuple[int, int, int] | None:
         """只发射前向 + 异步 D2H，不等待采样结果。"""
         assert self.model_runner is not None

@@ -1,5 +1,5 @@
 # ============================================================================
-# 【本文件是做什么的】Executor = **执行面与门面之间的桥**。它把上层那句
+# 【本文件是做什么的】Executor = 执行面与门面之间的桥。它把上层那句
 # 「跑一步」翻译成两种完全不同的实现：
 #     单卡（tp=pp=1）→ UniprocExecutor：同进程直接函数调用，零通信
 #     多卡（tp×pp>1）→ MultiprocExecutor：rank0 广播调度指令，各 rank 各自执行前向，
@@ -9,10 +9,10 @@
 # 【为什么 rank0 要身兼两职（driver + 本地 worker）】
 #   多进程如果再多开一个"纯 driver"进程，就要多一次转发、多一份内存。
 #   让 rank0 一边广播一边干自己那份活，是省资源的选择 ——
-#   代价是 rank0 的时序要小心：**必须先广播再本地执行**，
+#   代价是 rank0 的时序要小心：必须先广播再本地执行，
 #   否则子进程在等命令、而 rank0 已经开始算自己的了。
 #
-# 【采样为什么只在一个 rank 上做】只有**最后一段 PP** 持有 lm_head、
+# 【采样为什么只在一个 rank 上做】只有最后一段 PP 持有 lm_head、
 #   也只有它能拿到完整 logits。所以采样固定落在末段 PP 的 tp0 上：
 #   `sampler_rank = (pp_size - 1) * tp_size`（rank 编号是 pp 优先、tp 连续）。
 #
@@ -24,7 +24,7 @@
 #        CUDA / NCCL 阻塞中的进程常常不响应 SIGTERM，只有 SIGKILL 能收掉。
 #     ② `_owns_workers` 区分 run.py 与 torchrun 两条路径。误杀外部管理的进程，
 #        会连带把别人的任务一起干掉。
-#     ③ 采样结果回传是**阻塞**的（driver 侧 recv 会等）→ 这一步无法与下一次
+#     ③ 采样结果回传是阻塞的（driver 侧 recv 会等）→ 这一步无法与下一次
 #        调度重叠。这是多卡路径的吞吐上限之一，不是 bug。
 #     ④ FileStore rendezvous 不要求 rank0 先监听，所以可以**先起子进程、再初始化
 #        rank0**；反过来写也能跑，但会白等一段时间。
@@ -67,7 +67,7 @@ from ..distributed import ControlChannel, get_world_group
 # ==============================================================================
 
 
-# 采样固定落在**最后一段 PP 的 tp0** 上 —— 只有那里有完整 logits。
+# 采样固定落在最后一段 PP 的 tp0 上 —— 只有那里有完整 logits。
 def _sampler_rank(tp_size: int, pp_size: int) -> int:
     """
         采样发生在全局哪个 rank。
@@ -151,7 +151,7 @@ class Executor(ABC):
     # 用 Worker 报上来的块数建一个记账用的 KVManager。
     def _kv_manager(self, num_blocks: int) -> KVManager:
         """根据 Worker 报告的可用块数，构造门面侧的 KVManager。"""
-        # 注意这是**两份** KV 对象：Worker 里那份才是显存池，这里只是块分配账本。
+        # 注意这是两份 KV 对象：Worker 里那份才是显存池，这里只是块分配账本。
         return KVManager(
             num_blocks=num_blocks,
             block_size=self.config.block_size,
@@ -251,7 +251,7 @@ def worker_loop(worker: Worker) -> None:
             raise ValueError(f"unknown control op: {cmd.op}")
 
         # 执行前向。所有 rank 都参与（TP 需要集合通信，PP 需要逐段执行）。
-        # 执行前向。**所有 rank 都要参与** —— TP 要集合通信，PP 要逐段接力。
+        # 执行前向。所有 rank 都要参与 —— TP 要集合通信，PP 要逐段接力。
         counts = worker.execute_model(cmd.sched)
 
         # 只有采样 rank 需要读结果并回传。
@@ -455,7 +455,7 @@ class MultiprocExecutor(Executor):
         self.kv = self._kv_manager(self.num_blocks)
         return self.kv
 
-    # 重建：**先广播给子进程，再本地执行** —— 否则会各建各的、块数对不上。
+    # 重建：先广播给子进程，再本地执行 —— 否则会各建各的、块数对不上。
     def reset_kv(self, prefix_backend: str | None = None) -> KVManager:
         """
             重建所有 rank 的 KV cache。

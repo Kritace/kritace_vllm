@@ -36,9 +36,9 @@ from vs_vllm import _ours  # noqa: E402
 # 三类文本，覆盖"重复度"这个唯一决定收益的变量。
 #
 # 选择依据（实测的 α 与 E[token] 见 docs/03-投机解码.md）：
-#   高重复：模板化的问答对 → n-gram 几乎必中，用来给出**收益上限**
+#   高重复：模板化的问答对 → n-gram 几乎必中，用来给出收益上限
 #   散文  ：自然语言 → 中等重复度，最接近真实业务场景
-#   代码  ：几乎无重复片段 → 用来给出**收益下限**（也是"K 加大没用"的例子）
+#   代码  ：几乎无重复片段 → 用来给出收益下限（也是"K 加大没用"的例子）
 PROMPTS: dict[str, str] = {
     "重复(问答模板)": (
         "Q: What is the capital of France?\nA: The capital of France is Paris.\n"

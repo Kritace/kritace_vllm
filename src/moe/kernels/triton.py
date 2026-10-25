@@ -1,24 +1,24 @@
 # ============================================================================
-# 【本文件是做什么的】Triton 版 **grouped GEMM**：把一层 MoE 的两次矩阵乘
-# （w13 → Silu → w2）各用**一次 kernel 启动**算完所有专家。
+# 【本文件是做什么的】Triton 版 grouped GEMM：把一层 MoE 的两次矩阵乘
+# （w13 → Silu → w2）各用一次 kernel 启动算完所有专家。
 # 重排 / SwiGLU / 求和三个辅助步骤复用同目录的 cuda.py。
 #
 # 【grouped GEMM 到底"grouped"在哪】
 #     普通 GEMM：C = A @ B，全场只有一个 B。
 #     这里 B 是三维的 [E, K, N]（每个专家一份权重）。kernel 里每个 block 先查
-#     `expert_ids[pid_m]` 拿到**自己负责哪个专家**，再用 `expert * stride_be` 把
+#     `expert_ids[pid_m]` 拿到自己负责哪个专家，再用 `expert * stride_be` 把
 #     指针偏到那个专家的权重上 —— 于是同一次启动里，不同 block 用的是不同的 B。
-#     这就是"按专家分组"的含义：分组信息不是数据，而是**指针偏移**。
+#     这就是"按专家分组"的含义：分组信息不是数据，而是指针偏移。
 #
 # 【A 那边为什么要查表】token 被 align 重排过，行序变了；
 #     `sorted_ids[pid_m * BLOCK_M + offs]` 把"第 m 行该取原始第几个 token"翻译回来（gather）。
 #     所以两个操作数一个靠查表取行、一个靠偏移取专家，这是整个 kernel 的核心两行。
 #
 # 【两次 GEMM 的差别】
-#     第一次（w13）：输入是 hidden，按 **M*top_k** 行算（每个 token 的每路路由各一行），
+#     第一次（w13）：输入是 hidden，按 M*top_k 行算（每个 token 的每路路由各一行），
 #                   row_div = top_k（行号除以 top_k 才是 token 号）；
 #     第二次（w2） ：输入已经过 SwiGLU，行数变成 M，row_div = 1，
-#                   并且要**多乘一次路由权重**（mul_w）再把 k 路相加 —— 加权就是在这里发生的。
+#                   并且要多乘一次路由权重（mul_w）再把 k 路相加 —— 加权就是在这里发生的。
 #
 # ⚠️ 参数里的 stride 顺序有坑：权重在显存里是 [E, N, K]（K 连续），
 #   但传给 kernel 的顺序是 stride(0), stride(2), stride(1) —— 让 kernel 内部按 [E, K, N]
@@ -132,7 +132,7 @@ def _gemm_kernel(
         # 用"块利用率"换"省掉一次 align kernel"。
         token = tl.where(offs == 0, pid_m, num_valid)
     else:
-        # 常规路径：从 sorted_ids 取出这 BLOCK_M 行各自对应的**原始** token 行号。
+        # 常规路径：从 sorted_ids 取出这 BLOCK_M 行各自对应的原始 token 行号。
         # 注意数组长度按容量分配，超出真实长度的位置填的是越界下标，靠掩码兜住。
         token = tl.load(sorted_ptr + pid_m * BLOCK_M + offs)
 
@@ -143,7 +143,7 @@ def _gemm_kernel(
     if expert < 0:
         return
 
-    # token → A 的**输入行号**。
+    # token → A 的输入行号。
     #     第一次 GEMM：A 是按 M*top_k 行存的（每路路由一行）⇒ 除以 top_k 才是 token 号；
     #     第二次 GEMM：A 已经变成 M 行 ⇒ 除以 1，即原值。
     # 把 token // row_div 统一成一种写法，两次调用共用同一个 kernel。
@@ -154,7 +154,7 @@ def _gemm_kernel(
     offs_k = tl.arange(0, BLOCK_K)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     # A 的指针：行方向用"翻译回来的 token 行号"，列方向走 K。
-    # 这就是 gather：A 的行是**不连续**的，靠 a_row 一行行指过去。
+    # 这就是 gather：A 的行是不连续的，靠 a_row 一行行指过去。
     a_ptrs = a_ptr + a_row[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = (
         b_ptr
@@ -191,7 +191,7 @@ def _gemm_kernel(
         b_ptrs += BLOCK_K * stride_bk
 
     # 【只有第二次 GEMM 会进来】把每路的路由权重乘到结果上。
-    # 第一次（算 gate/up）不乘：加权求和必须在 SwiGLU **之后**做，
+    # 第一次（算 gate/up）不乘：加权求和必须在 SwiGLU 之后做，
     # 否则相当于先加权再激活，与数学定义不符。
     # 权重按 token 取（同一个 token 的 k 路各取自己的权重）。
     if mul_w:
@@ -237,7 +237,7 @@ def _gemm(
     # 输出按「最大可能行数」num_valid 分配，实际用到的行由掩码决定。
     # 池化键里带 num_valid 与 N，是为了形状一致时复用同一块。
     C = _scratch(out_key, shape=(max(num_valid, 1), N), dtype=A.dtype, device=A.device)
-    # 每步清零。掩码保证不会读到脏值，但清零让「池化复用」的结果**可复现**，
+    # 每步清零。掩码保证不会读到脏值，但清零让「池化复用」的结果可复现，
     # 也让 CG 重放时的输出与 eager 完全一致 —— 代价是每步一次全量写。
     C.zero_()
     if num_valid == 0 or grid_tokens == 0:
@@ -302,7 +302,7 @@ def forward(
     w2 = w2_weight.contiguous()
     M, top_k = hidden_states.shape[0], int(topk_ids.shape[1])
     # E = 本卡持有的专家数（EP 下是 num_experts / ep_size，不是全局专家数）。
-    # num_valid = M * top_k：第一次 GEMM 的**有效行数**（每个 token 的每路路由各一行）。
+    # num_valid = M * top_k：第一次 GEMM 的有效行数（每个 token 的每路路由各一行）。
     E, num_valid = w13.shape[0], M * top_k
     dev = hidden_states.device.index or 0
     # 分块尺寸随本轮形状变（decode / prefill 用不同的 tile）。
@@ -353,7 +353,7 @@ def forward(
     )
     # 第二次 GEMM：输入先过 SwiGLU（行数从 M*top_k 变成 M），再乘路由权重。
     # row_div=1：此时 A 的行号就是 token 号；
-    # mul_w 打开：这是**唯一**做加权的地方，k 路的合并结果在最后一步 moe_sum 里完成。
+    # mul_w 打开：这是唯一做加权的地方，k 路的合并结果在最后一步 moe_sum 里完成。
     down = _gemm(
         # 融合 SwiGLU：up * silu(gate)，一步出结果（见 cuda.py 的同名函数）。
         silu_and_mul(gate_up),

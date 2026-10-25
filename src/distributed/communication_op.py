@@ -1,11 +1,11 @@
 # ============================================================================
-# 【本文件是做什么的】把 torch.distributed 的通信原语**包一层**，统一三件事：
+# 【本文件是做什么的】把 torch.distributed 的通信原语包一层，统一三件事：
 #     rank 口径、单卡短路、以及"只在某一维拼接"的维度搬运。
 #
 # 【为什么不能直接调 torch.distributed】
 #     ① 单卡的短路：size == 1 时不该建组、也不该调用集合通信（部分后端会报错）。
-#     ② all_gather / reduce_scatter 的底层只认**第 0 维**：想沿别的维拼，
-#        得自己把维度搬来搬去。这层就是把这件事**收口到一个地方**。
+#     ② all_gather / reduce_scatter 的底层只认第 0 维：想沿别的维拼，
+#        得自己把维度搬来搬去。这层就是把这件事收口到一个地方。
 #     ③ 调用方不该关心"我到底属于哪个组"：TP 专用的包装在这里一次性提供。
 #
 # 【两条通信路径，别搞混】
@@ -16,7 +16,7 @@
 #   后者每步只有 hidden 大小的一两次），这也是实测里 TP 与 PP 表现相反的根因之一。
 #
 # 【⚠️ 两个容易踩的点】
-#     ① 点对点的 peer 参数是**组内** rank（PP 场景下用 next_group_rank / prev_group_rank），
+#     ① 点对点的 peer 参数是组内 rank（PP 场景下用 next_group_rank / prev_group_rank），
 #        不是 WORLD rank。传错不会报错，只会让对端一直等（看起来像死锁）。
 #     ② 零长张量要跳过：numel() == 0 的张量在部分后端上会出错，而且它本来也没有传输意义。
 #
@@ -81,7 +81,7 @@ def all_gather(
     )
 
 
-# all_reduce：**原地**累加，所以没有额外的输出分配。
+# all_reduce：原地累加，所以没有额外的输出分配。
 def all_reduce(
     input: torch.Tensor, op=dist.ReduceOp.SUM, group: Group | None = None
 ) -> torch.Tensor:
@@ -141,7 +141,7 @@ def tensor_model_parallel_reduce_scatter(
     return reduce_scatter(input, dim=dim, op=op, group=get_tp_group())
 
 
-# send：PP 边界传 hidden / residual。**阻塞**语义 —— 所有 work.wait() 走完才算发完。
+# send：PP 边界传 hidden / residual。阻塞语义 —— 所有 work.wait() 走完才算发完。
 def send_tensors(
     tensors: tuple[torch.Tensor, ...] | list[torch.Tensor],
     dst: int,
@@ -175,7 +175,7 @@ def _p2p(
     group = _resolve(group)
     if group.size == 1:
         return []
-    # peer 是**组内**序号，越界要立刻报错：越界不会崩，只会让对端一直等。
+    # peer 是组内序号，越界要立刻报错：越界不会崩，只会让对端一直等。
     if not 0 <= peer < group.size:
         raise ValueError(f"peer={peer} not in [0, {group.size})")
     ops = [

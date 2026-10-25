@@ -59,7 +59,7 @@ class NgramDrafter:
 
         # 返回给上层的草稿（最多 k 个；匹配不上就提前结束，长度可以不足 k）。
         out: list[int] = []
-        # 复制一份 history 用于**追加**匹配到的草稿 token。
+        # 复制一份 history 用于追加匹配到的草稿 token。
         # 不能直接改调用方传进来的 list（调用方的序列状态不能被草稿影响）。
         history = list(token_ids)
         # 每轮尝试「匹配一个 token → 接上 → 再匹配下一个」。
@@ -76,7 +76,7 @@ class NgramDrafter:
         return out
 
     # ============================================================================
-    # 取一个后继：用**最长**的可匹配后缀。
+    # 取一个后继：用最长的可匹配后缀。
     # 从 max_n 递减到 min_n，第一个在历史上出现过的后缀就采用它的后继 ——
     # 后缀越长，条件越强、命中的概率越低，但一旦命中，"下一个 token 就该是它"的
     # 可信度也越高。所以优先长后缀。
@@ -96,7 +96,7 @@ class NgramDrafter:
             pos = self._last_occurrence(history, key)
             if pos is not None:
                 # 命中：紧跟在那个位置的键之后的下一个 token 就是草稿。
-                # 注意 pos 是**起点**，所以后继下标是 pos + n。
+                # 注意 pos 是起点，所以后继下标是 pos + n。
                 return history[pos + n]
         return None
 
@@ -110,7 +110,7 @@ class NgramDrafter:
         # 键的长度 —— 也就是「要跳过多少个位置才可能读到后继」。
         n = len(key)
         # ★ 搜索上界刻意排除了末尾：最晚只搜到 len(history)-n-1。
-        # 否则当前后缀会匹配到**它自己**，然后 pos+n 直接越界（或者取到一个不存在的位置），
+        # 否则当前后缀会匹配到它自己，然后 pos+n 直接越界（或者取到一个不存在的位置），
         # 这是这类"用历史预测未来"的实现最经典的越界来源。
         for i in range(len(history) - n - 1, -1, -1):
             if tuple(history[i : i + n]) == key:

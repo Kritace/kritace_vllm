@@ -6,7 +6,7 @@
 # 却又共用同一个 Protocol 的原因。
 #
 # 两个硬约束（推导见 docs/03-投机解码.md）：
-#   1. draft 必须与 target **同词表**。否则 token id 对不上，
+#   1. draft 必须与 target 同词表。否则 token id 对不上，
 #      验证从第一步就是错的，而且不会报错，只会表现为接受率恒为 0。
 #   2. draft 参数量必须远小于 target。K 次草稿各读一遍 draft 权重，
 #      若 draft 接近 target 大小，"用便宜计算换昂贵访存"的前提就不成立。
@@ -110,6 +110,6 @@ class ModelDrafter:
         if self.all_greedy or self.temperature <= 0:
             return int(logits.argmax().item())
         # 采样路径：温度必须先作用于 logits 再 softmax。
-        # ⚠️ 这里的温度必须与 target 侧**用同一个值**，否则接受判定 min(1, p/q) 不成立。
+        # ⚠️ 这里的温度必须与 target 侧用同一个值，否则接受判定 min(1, p/q) 不成立。
         probs = torch.softmax(logits / self.temperature, dim=-1)
         return int(torch.multinomial(probs, 1).item())

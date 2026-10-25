@@ -1,11 +1,11 @@
 # ============================================================================
-# 【本文件是做什么的】fused MoE 的**两个后端**（FlashInfer cutlass / Triton）与切换点。
+# 【本文件是做什么的】fused MoE 的两个后端（FlashInfer cutlass / Triton）与切换点。
 # 上面 block.py 只负责"算哪几个专家、权重怎么排"，真正的 kernel 在这里选。
 #
 # 【为什么要缓存那三块临时张量】每一层、每一步都要调一次这个函数。
 # 如果每次都新建 ids / scales / out：
 #     ① 每步多出若干次显存分配（小张量也不例外，allocator 要走一遍）；
-#     ② **CUDA Graph 捕获时张量地址必须稳定** —— 重放时要写回同一块内存，
+#     ② CUDA Graph 捕获时张量地址必须稳定 —— 重放时要写回同一块内存，
 #        每次都换新张量的话图就抓不住。缓存让地址在多次调用之间保持不变。
 #
 # 【为什么缓存的 key 里要带设备号】一个进程里可能有多张卡（TP worker），
@@ -46,12 +46,12 @@ def clear_fused_state() -> None:
     clear_cuda_state()
 
 
-# 【取/建临时张量】命中条件比"key 存在"严格：**形状、dtype、设备三者都要一致**。
+# 【取/建临时张量】命中条件比"key 存在"严格：形状、dtype、设备三者都要一致。
 # 只比 key 是不够的 —— key 只记录了"哪一类"，shape 变了就得重建。
 def _scratch(cache, key, *, shape, dtype, device):
     buf = cache.get(key)
     # 四元组任一不符就重新分配并顶掉旧的。
-    # 顶掉旧张量意味着这份缓存**不是池**：同一时刻每个 key 只保留最近一次用的那块。
+    # 顶掉旧张量意味着这份缓存不是池：同一时刻每个 key 只保留最近一次用的那块。
     # 想同时服务多个不同形状的调用（例如 CG 捕获多个 batch 档），靠的是 key 不同、
     # 因此是不同的缓存项，而不是同一项里放多块。
     if buf is None or buf.shape != shape or buf.dtype != dtype or buf.device != device:
@@ -85,7 +85,7 @@ def _cutlass(
     # 多卡时不同卡的缓存必须分开（见文件头），所以才需要这个整数进 key。
     di = dev.index or 0
     # out / ids / scales 三块都从缓存里取（形状一致的复用，不一致的重建）。
-    # ids 与 scales 是**输入**的搬运目标：融合核要求 int32 / float32，
+    # ids 与 scales 是输入的搬运目标：融合核要求 int32 / float32，
     # 而 topk_ids 是 int64（查表用）、topk_weights 是 bf16，所以要各转一次。
     out = _scratch(
         _OUT, (di, t, h, hidden_states.dtype), shape=(t, h), dtype=hidden_states.dtype, device=dev

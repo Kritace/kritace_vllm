@@ -4,7 +4,7 @@
 #     CUDAGraphRunner —— decode 的录图与重放
 #     Sampler         —— 采样 kernel
 #
-# 【它和 control/ 的界线是什么】就一条：**碰不碰张量**。
+# 【它和 control/ 的界线是什么】就一条：碰不碰张量。
 #     control/ 只做调度与进程编排，不碰张量、也不知道模型长什么样；
 #     compute/ 才持有模型、KV 显存与所有 GPU 缓冲。
 # 这条界线是三层架构的基础 —— 顺着它就能判断一段代码该放哪边。

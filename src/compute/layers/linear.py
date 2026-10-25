@@ -1,38 +1,38 @@
 # ============================================================================
-# 【本文件是做什么的】张量并行（TP）的两块基础砖：**列并行**与**行并行**，
+# 【本文件是做什么的】张量并行（TP）的两块基础砖：列并行与行并行，
 # 外加两个融合变体（QKV 融合、多段列融合）。
 #
 # 【TP 的核心思想，两句话】把权重切开分到各卡上，每卡只算一部分；
-# 缺的那部分用一次集合通信补回来。**切在哪一维，决定了通信插在哪**：
-#     列并行（Column）：按**输出维**切 → 每卡产出一段输出
+# 缺的那部分用一次集合通信补回来。切在哪一维，决定了通信插在哪：
+#     列并行（Column）：按输出维切 → 每卡产出一段输出
 #         → 需要完整输出时 all-gather；不需要就保持分片往下传
-#     行并行（Row）   ：按**输入维**切 → 每卡吃一段输入、算出的是一份**部分和**
+#     行并行（Row）   ：按输入维切 → 每卡吃一段输入、算出的是一份部分和
 #         → 必须 all-reduce 才能得到完整结果
 #
 # 【它们为什么总是一对出现】Transformer 里每一块都是"先切再合"：
 #     Attention：QKV 投影（列）→ 注意力 → out 投影（行）
 #     FFN      ：gate/up 投影（列）→ 激活       → down 投影（行）
-#   中间那段激活**始终以分片状态存在**，一次都不需要拼回完整形状 ——
+#   中间那段激活始终以分片状态存在，一次都不需要拼回完整形状 ——
 #   这就是 Megatron 式 TP 的结构：全程只有两处通信（列后的 all-gather 可省，
 #   行后的 all-reduce 必须有）。
 #
 # 【为什么 bias 在两种切法里待遇不同】
-#     列并行：bias 与**输出**同维 → 跟权重一起切
-#     行并行：bias 只加在输出上，与输入维无关 → **不能切**，必须全量持有；
-#             而且要加在 all-reduce **之后**，否则每个 rank 各加一次、重复 tp 倍
+#     列并行：bias 与输出同维 → 跟权重一起切
+#     行并行：bias 只加在输出上，与输入维无关 → 不能切，必须全量持有；
+#             而且要加在 all-reduce 之后，否则每个 rank 各加一次、重复 tp 倍
 #
-# 【权重加载为什么做得这么绕】HF 权重是**全量**的，而本 rank 的参数只有分片。
+# 【权重加载为什么做得这么绕】HF 权重是全量的，而本 rank 的参数只有分片。
 # 所以每个 Parameter 上都挂了一个 `weight_loader` 回调，由它负责
 # "从全量张量里切出本 rank 需要的那一块，再就地写进已有内存"。
-# `_shard` 返回的是 **view**（`narrow`），所以整个过程不会多出一份全量权重的峰值显存。
+# `_shard` 返回的是 view（`narrow`），所以整个过程不会多出一份全量权重的峰值显存。
 #
 # 【⚠️ 三个容易踩的点】
-#     ① `narrow` 返回的是**视图不是拷贝**：对视图 `copy_` 是就地写入（这正是我们要的），
+#     ① `narrow` 返回的是视图不是拷贝：对视图 `copy_` 是就地写入（这正是我们要的），
 #        但如果把视图存起来当参数，就会与源张量共享内存 —— 千万别那么用。
-#     ② 行并行 forward 里 `input_is_parallel=False` 时，narrow 之后**必须 contiguous**：
+#     ② 行并行 forward 里 `input_is_parallel=False` 时，narrow 之后必须 contiguous：
 #        GEMM 要连续内存，否则会静默走慢路径。
 #     ③ QKV 融合层用字符串 `shard_id`（'q'/'k'/'v'/'bias'）区分三段。
-#        字符串写错**不会报错**，只会把数据静默写到错误的偏移上。
+#        字符串写错不会报错，只会把数据静默写到错误的偏移上。
 #
 # 【读这个文件的顺序】
 #     _shard（怎么按 rank 取分片）
@@ -70,7 +70,7 @@ from ...distributed import (
 
 # ============================================================================
 # 【可以在构造时显式指定 tp 组】否则所有并行层只能"读环境里的 TP 组"。
-# MoE 引入了新情况：**同一个进程里存在两套切法** ——
+# MoE 引入了新情况：同一个进程里存在两套切法 ——
 #     Attention 按环境 TP 组切；
 #     EP 下的共享专家要求"不切"（tp_size=1）；
 #     普通 TP 下共享专家又要求"按环境 TP 组切"。
@@ -97,7 +97,7 @@ def _tp_meta(tp_size: int | None) -> tuple[int, int]:
 
 
 # 【取分片 view】因为支持"显式指定 tp 组"，所以签名长了；
-# 语义没变：返回的是 **narrow 出来的 view**，不是拷贝。
+# 语义没变：返回的是 narrow 出来的 view，不是拷贝。
 def _shard(
     weight: torch.Tensor,
     dim: int,
@@ -128,7 +128,7 @@ def _shard(
 # 每个 rank 都持有完整的 [out, in] 权重与完整的 bias。
 #
 # 什么时候需要它：
-#     · MoE 的 router（gate）：每个 rank 都要独立打分，且**必须打出完全一样的结果**
+#     · MoE 的 router（gate）：每个 rank 都要独立打分，且必须打出完全一样的结果
 #       （否则同一 token 在不同卡上会去找不同专家，出口 all-reduce 拼起来就是错的）；
 #     · EP 下的共享专家：每卡一份完整权重，算完再由上层决定 all-reduce 的顺序。
 # 代价是显存冗余，收益是零通信 —— 对这两处（小矩阵 / 需要结果一致）是划算的。
@@ -149,7 +149,7 @@ class ReplicatedLinear(nn.Module):
         # 初始化偏置，仅持有当前 Rank 负责的偏置部分
         # 列并行的 bias 与输出同维，所以跟着权重一起切。
         if bias:
-            # bias 在这里是**整份**保留的（不切）—— 这与列并行不同。
+            # bias 在这里是整份保留的（不切）—— 这与列并行不同。
             # 注意：上面那两行注释（"仅持有当前 Rank 负责的偏置部分 / 列并行的 bias 与输出同维"）
             # 是从列并行类抄过来的，对本类不成立：本类不做任何切分，see forward。
             self.bias = nn.Parameter(torch.empty(out_size))
@@ -177,7 +177,7 @@ class ReplicatedLinear(nn.Module):
         return torch.nn.functional.linear(x, self.weight, self.bias)
 
 
-# 列并行：权重按**输出维**切，每张卡负责算出输出的一段。
+# 列并行：权重按输出维切，每张卡负责算出输出的一段。
 class ColumnParallelLinear(nn.Module):
     """
         输出并行
@@ -206,7 +206,7 @@ class ColumnParallelLinear(nn.Module):
         self._tp_size, self._tp_rank = _tp_meta(tp_size)
         self.output_size_per_partition = divide(out_size, self._tp_size)
         # 初始化权重，仅持有当前 Rank 负责的权重部分
-        # 权重形状 [out/tp, in]。注意参数**本身就只有分片**，不是「先全量再切片」。
+        # 权重形状 [out/tp, in]。注意参数本身就只有分片，不是「先全量再切片」。
         self.weight = nn.Parameter(
             torch.empty(self.output_size_per_partition, in_size)
         )
@@ -231,19 +231,19 @@ class ColumnParallelLinear(nn.Module):
             _shard(loaded_weight, dim=0, tp_size=self._tp_size, tp_rank=self._tp_rank)
         )
 
-    # 前向：可选的输入切片 → 局部 GEMM → **all-reduce** 补回完整输出 → 加 bias。
+    # 前向：可选的输入切片 → 局部 GEMM → all-reduce 补回完整输出 → 加 bias。
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # 局部 GEMM，形状 [.., out/tp]。
         out = torch.nn.functional.linear(x, self.weight, self.bias)
 
         # 跨 TP 通信，将所有 Rank 的局部输出拼接为完整输出
-        # 后接「按输入维切分」的层时可以**不拼**，直接把分片传下去 —— 这是 TP 省通信的关键。
+        # 后接「按输入维切分」的层时可以不拼，直接把分片传下去 —— 这是 TP 省通信的关键。
         if self.gather_output:
             return tensor_model_parallel_all_gather(out, dim=-1)
         return out
 
 
-# 行并行：权重按**输入维**切，每张卡吃一段输入，最后 all-reduce 求和。
+# 行并行：权重按输入维切，每张卡吃一段输入，最后 all-reduce 求和。
 class RowParallelLinear(nn.Module):
     """
         输入并行
@@ -274,7 +274,7 @@ class RowParallelLinear(nn.Module):
         self.reduce_results = reduce_results
         self._tp_size, self._tp_rank = _tp_meta(tp_size)
         self.input_size_per_partition = divide(in_size, self._tp_size)
-        # 权重形状 [out, in/tp]。输出维是**全量**的 —— 所以行并行的单卡输出只是「部分和」。
+        # 权重形状 [out, in/tp]。输出维是全量的 —— 所以行并行的单卡输出只是「部分和」。
         self.weight = nn.Parameter(
             torch.empty(out_size, self.input_size_per_partition)
         )
@@ -298,26 +298,26 @@ class RowParallelLinear(nn.Module):
             _shard(loaded_weight, dim=1, tp_size=self._tp_size, tp_rank=self._tp_rank)
         )
 
-    # 前向：一次融合 GEMM，**不 gather**。
+    # 前向：一次融合 GEMM，不 gather。
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not self.input_is_parallel and self._tp_size > 1:
             shard = self.input_size_per_partition
             x = x.narrow(-1, self._tp_rank * shard, shard).contiguous()
         # 局部计算
-        # 局部 GEMM：形状 [.., out]，但每张卡算出来的是**部分和**。
+        # 局部 GEMM：形状 [.., out]，但每张卡算出来的是部分和。
         out = torch.nn.functional.linear(x, self.weight)
         if self.reduce_results and self._tp_size > 1:
             # 跨 TP 通信，将所有 Rank 的局部输出拼接为完整输出
             # 关键一步：各卡的部分和相加才是完整结果。行并行的通信就在这一行。
             out = tensor_model_parallel_all_reduce(out)
         # 加上偏置
-        # bias 必须在 all-reduce **之后**加：提前加会被累加 tp 次。
+        # bias 必须在 all-reduce 之后加：提前加会被累加 tp 次。
         if self.bias is not None:
             out = out + self.bias
         return out
 
 
-# QKV 融合 + Head 切分：Q 均分到各卡；卡数多于 KV 头数时，KV 头**复制**到多张卡上。
+# QKV 融合 + Head 切分：Q 均分到各卡；卡数多于 KV 头数时，KV 头复制到多张卡上。
 class QKVParallelLinear(nn.Module):
     """
     融合 QKV 投影层
@@ -348,7 +348,7 @@ class QKVParallelLinear(nn.Module):
         # Q 均分到每个 rank
         self.num_heads = divide(total_num_heads, tp_size)
         # 处理 KV Head 数量小于 TP Size 的情况
-        # 处理办法不是报错，而是让多张卡**共享同一个 KV 头**（各自持一份相同的权重）。
+        # 处理办法不是报错，而是让多张卡共享同一个 KV 头（各自持一份相同的权重）。
         if tp_size > total_num_kv_heads:
             self.num_kv_heads = 1
             # 记录每个 KV Head 需要被复制的次数 (例如 2个KV Head, 4个Rank -> 每个复制 2 次)
@@ -396,7 +396,7 @@ class QKVParallelLinear(nn.Module):
             begin = self.q_size + self.kv_size
         
         # 处理 GQA/MQA 下的 KV Head 复制逻辑
-        # 复制模式：本 rank 该拿哪个**全局** KV 头？用整除算归属。
+        # 复制模式：本 rank 该拿哪个全局 KV 头？用整除算归属。
         if self.num_kv_head_replicas > 1:
             # 例：nkv=2, tp=4 时，head0 归 rank0,1 共享、head1 归 rank2,3 共享
             # 通过整除计算当前 Rank 应该获取哪一个全局 KV Head
@@ -493,7 +493,7 @@ class MergedColumnParallelLinear(nn.Module):
     def weight_loader(
         self, param: nn.Parameter, loaded_weight: torch.Tensor, shard_id: int
     ) -> None:
-        # 本段起始偏移 = 前面各段**分片后**宽度之和（不是全量宽度）。
+        # 本段起始偏移 = 前面各段分片后宽度之和（不是全量宽度）。
         shard_offset = sum(self.output_sizes_per_partition[:shard_id])
         # 先切出本 rank 的分片。
         shard_size = self.output_sizes_per_partition[shard_id]

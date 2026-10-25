@@ -50,7 +50,7 @@ def slots_for_range(
         return []
     b = start // block_size
     off = start - b * block_size
-    # 快路径：整段落在**同一个块**里 → 一次 range 就够，不需要循环。
+    # 快路径：整段落在同一个块里 → 一次 range 就够，不需要循环。
     # 这是 decode 以及小 chunk 走的路径，也是最常见的。
     if off + n <= block_size:
         base = block_table[b] * block_size
@@ -168,7 +168,7 @@ class Sequence:
         # 已生成 token 数 = 总长 − prompt 长。注意是"生成"不是"已缓存"。
         return self.status == SequenceStatus.FINISHED
 
-    # 需要多少页 = 总长按块大小向上取整。它用的是**总长**（含未算的部分），
+    # 需要多少页 = 总长按块大小向上取整。它用的是总长（含未算的部分），
     # 所以调度器能提前知道"就算全生成完，页够不够"。
     @property
     def num_completion_tokens(self) -> int:
@@ -187,7 +187,7 @@ class Sequence:
     def last_block_num_tokens(self) -> int:
         if self.num_blocks == 0:
             return 0
-        # 已填满的块数。**只有满块才能进前缀索引**，所以这个函数是发布逻辑的前置条件。
+        # 已填满的块数。只有满块才能进前缀索引，所以这个函数是发布逻辑的前置条件。
         # 用的是整除（向下取整），不是向上取整 —— 这是"不满的块不算"的体现。
         return self.num_tokens - (self.num_blocks - 1) * self.block_size
 

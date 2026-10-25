@@ -6,17 +6,17 @@
 #     ① 我这个进程是谁？   → global_rank 由 (pp_rank, tp_rank) 唯一确定
 #     ② 我该跟谁通信？     → TP 组 = 同一 PP 段内连续的 tp_size 个进程
 #                            PP 组 = 每个 TP 位置各出一个，串成一条流水线
-#   本文件用全局 rank 的**算术**回答这两问，不依赖任何外部布局描述：
+#   本文件用全局 rank 的算术回答这两问，不依赖任何外部布局描述：
 #       global_rank = pp_rank * tp_size + tp_rank
 #       TP 组 = [pp_rank * tp_size + k for k in range(tp_size)]
 #       PP 组 = [k * tp_size + tp_rank for k in range(pp_size)]
-#   这跟真实 vLLM 的做法一致 —— 进程拓扑是**算出来的**，不是配置文件里写出来的。
+#   这跟真实 vLLM 的做法一致 —— 进程拓扑是算出来的，不是配置文件里写出来的。
 #
 # 【为什么每个组要带两个 backend】device_group 走 NCCL（GPU 张量），
 #   cpu_group 走 Gloo（CPU 张量 / 控制消息）。NCCL 传不了 CPU 张量，
 #   所以凡是要传字节或小标量的地方，都必须另建一个 Gloo 组。
 #
-# 【DP 为什么不在这个文件里】DP 的每个副本是一个**独立的 Engine**，
+# 【DP 为什么不在这个文件里】DP 的每个副本是一个独立的 Engine，
 #   各自有自己的一套 WORLD / TP / PP（见 control/mp_client.py）。
 #   本文件管的是"一个 Engine 内部"的切分，所以只有 TP 与 PP 两维。
 #
@@ -24,13 +24,13 @@
 #   既不建 NCCL clique（省启动时的建链与握手），也避免出现"1 个成员的组"。
 #
 # 【⚠️ 三个容易踩的点】
-#     ① NCCL 的 new_group 是**集合调用**：组内所有 rank 都必须执行到，
+#     ① NCCL 的 new_group 是集合调用：组内所有 rank 都必须执行到，
 #        否则没走到的那一侧会一直等 —— 表现为启动就卡住，且不报错。
-#     ② rank 有两种口径：WORLD rank 与**组内** rank。
+#     ② rank 有两种口径：WORLD rank 与组内 rank。
 #        NCCL 点对点（group_peer=）要组内序号；Gloo 的 send/recv 要 WORLD rank。
 #        混用会"发到错误的进程"或直接挂住。
 #     ③ size == 1 的组一律不建，靠通信函数里的短路兜住。
-#        所以"只有一张卡，随便调通信也没事"是**被短路救了**，不是真的没事。
+#        所以"只有一张卡，随便调通信也没事"是被短路救了，不是真的没事。
 #
 # 【读这个文件的顺序】
 #     Group（组的数据结构，以及谁拥有它）
@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 class Group:
     """一组 rank：device_group 走 NCCL，cpu_group 走 Gloo。size==1 不建组。"""
 
-    # ranks 是本组的 **WORLD rank 列表**（顺序即组内 rank 顺序）；rank 是本进程的 WORLD rank。
+    # ranks 是本组的 WORLD rank 列表（顺序即组内 rank 顺序）；rank 是本进程的 WORLD rank。
     def __init__(
         self,
         ranks: list[int],
@@ -82,7 +82,7 @@ class Group:
         self.rank = rank
         # 组大小。下面每个通信函数的第一件事都是判它是否等于 1
         self.size = len(ranks)
-        # 自己的**组内**序号（0..size-1）—— 跟 NCCL 打交道要用它，不要用 WORLD rank
+        # 自己的组内序号（0..size-1）—— 跟 NCCL 打交道要用它，不要用 WORLD rank
         self.group_rank = ranks.index(rank)
         # 这两个标志位决定 destroy 时该销毁谁：自己新建的才拥有
         self._owns_device_group = False
@@ -110,7 +110,7 @@ class Group:
     def is_first_rank(self) -> bool:
         return self.group_rank == 0
 
-    # 上游 / 下游的**组内**序号：NCCL 点对点（group_peer=）认的是这个口径
+    # 上游 / 下游的组内序号：NCCL 点对点（group_peer=）认的是这个口径
     @property
     def is_last_rank(self) -> bool:
         return self.group_rank == self.size - 1
@@ -124,7 +124,7 @@ class Group:
             raise RuntimeError("first PP stage has no previous peer")
         return self.group_rank - 1
 
-    # 再翻译成 **WORLD rank**：Gloo 的 send/recv 要全局 rank，NCCL 要组内序号 —— 两者别混用
+    # 再翻译成 WORLD rank：Gloo 的 send/recv 要全局 rank，NCCL 要组内序号 —— 两者别混用
     @property
     def next_group_rank(self) -> int:
         """PP 下游，给 NCCL group_peer=。"""
@@ -147,7 +147,7 @@ class Group:
         if self.size > 1 and self.cpu_group is not None:
             dist.barrier(self.cpu_group)
 
-    # 只销毁**自己建的**组。销毁复用来的（WORLD 的默认组）会连带把 torch 的默认组打掉
+    # 只销毁自己建的组。销毁复用来的（WORLD 的默认组）会连带把 torch 的默认组打掉
     def destroy(self) -> None:
         if self._owns_device_group and self.device_group is not None:
             dist.destroy_process_group(self.device_group)
@@ -300,7 +300,7 @@ def init_distributed_environment(
         from torch.distributed.distributed_c10d import _get_default_group
 
         default_device_group = _get_default_group()
-    # WORLD 复用 torch 建好的默认组，因此**不拥有**它 → destroy 时不会重复销毁
+    # WORLD 复用 torch 建好的默认组，因此不拥有它 → destroy 时不会重复销毁
     WORLD = Group(
         ranks=list(range(world_size)), rank=rank, device_group=default_device_group
     )
@@ -347,7 +347,7 @@ def set_nccl_env(ifname: str = "", *, disable_ib: bool = False) -> None:
     # 多网卡机器必须指定通信网卡名，否则 NCCL 可能挑到不对的那张
     if ifname:
         _set("NCCL_SOCKET_IFNAME", ifname)
-    # 关掉 InfiniBand 走 TCP；本地没有 IB 时**必须**关，否则 NCCL 会卡在设备探测
+    # 关掉 InfiniBand 走 TCP；本地没有 IB 时必须关，否则 NCCL 会卡在设备探测
     if disable_ib:
         _set("NCCL_IB_DISABLE", "1")
     else:

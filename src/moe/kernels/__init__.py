@@ -10,7 +10,7 @@
 #     辅助核（重排 / silu / 求和）—— 这三件事本身是逐元素或小规模操作，用 CUDA 手写更直接，
 #       走 Triton 反而要绕一圈（还要自己管网格与分块）。
 #
-# ⚠️ 所以「MoE 后端是 cutlass 还是 triton」只决定**专家 GEMM**走谁；
+# ⚠️ 所以「MoE 后端是 cutlass 还是 triton」只决定专家 GEMM走谁；
 #   重排、激活、求和这些辅助步骤在两条路径里都可能落到 CUDA 那套手上。
 # ============================================================================
 """MoE kernels: CUDA aux (align/silu/sum) + Triton grouped GEMM."""

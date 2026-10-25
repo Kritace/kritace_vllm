@@ -1,11 +1,11 @@
 # ============================================================================
-# 【本文件是做什么的】一条**只传字节**的通道：把 driver 侧（调度器所在进程）与
+# 【本文件是做什么的】一条只传字节的通道：把 driver 侧（调度器所在进程）与
 # worker 侧（跑计算的进程）之间的控制消息搬过去 —— 广播一步的调度结果、
 # 回传采样出的 token id。
 #
 # 【为什么需要它】"调度"与"计算"被拆到了不同进程（control/ 与 compute/）。
 # 两边要交换的东西形状不固定（一次调度结果里有几十个字段），而 torch.distributed
-# 只能传**张量**。所以这里的做法是：
+# 只能传张量。所以这里的做法是：
 #     ① 上层把控制消息序列化成一段 bytes
 #     ② 本文件把 bytes 包成 uint8 张量传过去
 #     ③ 接收端再还原成 bytes
@@ -14,7 +14,7 @@
 #   Gloo 天生处理 CPU 张量，小消息延迟也更低；NCCL 只擅长 GPU 大张量。
 #
 # 【⚠️ 协议上必须"先长度、后内容"】接收端不知道要收多少字节，
-#   所以每次都先传一个**定长的长度张量**，再按它开缓冲收正文。
+#   所以每次都先传一个定长的长度张量，再按它开缓冲收正文。
 #   长度用 0 表示"没有数据"，接收端据此直接返回 None / b""。
 #
 # 【src / dst 是 WORLD rank】不是组内序号 —— 这条通道建在 WORLD 的 Gloo 组上，
@@ -49,7 +49,7 @@ def _to_bytes(buf: torch.Tensor) -> bytes:
 
 
 class ControlChannel:
-    # group 直接用 WORLD 的 Gloo 组 —— 这是**同 Engine 内部** driver ↔ worker 的通道。
+    # group 直接用 WORLD 的 Gloo 组 —— 这是同 Engine 内部 driver ↔ worker 的通道。
     def __init__(self, group) -> None:
         self.group = group
 

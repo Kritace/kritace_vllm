@@ -1,12 +1,12 @@
 # ============================================================================
-# 【本文件是做什么的】driver 侧的 KV **账本**：给序列发页、查前缀命中、用完回收。
-# 注意它 **不 import torch** —— 因为真正的显存池在 compute/kv_pool.py。
+# 【本文件是做什么的】driver 侧的 KV 账本：给序列发页、查前缀命中、用完回收。
+# 注意它 不 import torch —— 因为真正的显存池在 compute/kv_pool.py。
 #
 # 【为什么账本与显存池要分成两个文件】
 #   这里把「调度」与「计算」拆到了不同进程：
 #     账本（本文件）跟调度器同进程（driver 侧），只回答「哪条序列占了哪些块」；
 #     显存池（compute/kv_pool.py）在每个 Worker 进程里，持有真正的大张量。
-#   两边只需要对齐一个数字 —— **总块数**（由 Worker 报给门面）。
+#   两边只需要对齐一个数字 —— 总块数（由 Worker 报给门面）。
 #   这样调度器不需要任何 GPU 上下文，也就能在 driver 侧自由抢占与重排。
 #
 # 【一条序列的生命周期，看这四个方法就够】
@@ -20,9 +20,9 @@
 #   这正是 cached 状态存在的意义：缓存块虽然被占着，但随时可以被挤掉让位。
 #
 # 【⚠️ 三个容易踩的点】
-#     ① `publish=False` 时**绝不登记进前缀索引**。被抢占的序列 KV 不完整，
+#     ① `publish=False` 时绝不登记进前缀索引。被抢占的序列 KV 不完整，
 #        发布出去会让后续请求命中「看起来相同但不完整」的 KV —— 静默错误。
-#     ② 块的两种状态转移顺序在后端之间是**反的**：hash 先 invalidate 再归还，
+#     ② 块的两种状态转移顺序在后端之间是反的：hash 先 invalidate 再归还，
 #        radix 先归还再 invalidate（radix 的树结构要先释放才能判断哪些页可回收）。
 #     ③ `num_cached_tokens` 与 `block_table` 必须同时维护，改一边不改另一边会静默错位。
 #
@@ -100,11 +100,11 @@ class KVManager:
         reclaimable = sum(
             1 for b in hit[:max_cached] if b in self.blocks.cached_ids
         )
-        # 池子里**其它** cached 块的数量：它们同样是可回收的候选。
+        # 池子里其它 cached 块的数量：它们同样是可回收的候选。
         other_cached = len(self.blocks.cached_ids) - reclaimable
         # 复用之外，还需要新分配多少块。
         new_needed = need - max_cached
-        # 关键判断：**自由块 + 可回收的其它缓存块** ≥ 新需求，就能允许复用。
+        # 关键判断：自由块 + 可回收的其它缓存块 ≥ 新需求，就能允许复用。
         if self.blocks.num_free + other_cached >= new_needed:
             return max_cached
         # 放不下时返回 -1 作为信号，由调用方决定是拒绝还是抢占。

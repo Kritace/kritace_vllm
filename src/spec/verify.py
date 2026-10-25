@@ -33,7 +33,7 @@ _TINY = 1e-12
 #
 # 直觉：草稿模型 q 扔出一个 token 时，如果 target p 也认为它不错（p ≥ q），
 #       那就照单全收；如果 target 觉得它没那么好（p < q），就以 p/q 的概率接受。
-# 这样做之后，"先由 q 采样、再按此概率接受"这一路的产出分布**恰好等于 p** ——
+# 这样做之后，"先由 q 采样、再按此概率接受"这一路的产出分布恰好等于 p ——
 # 被拒的那部分再由下面的 residual_distribution 补偿（两路合起来还原 p）。
 # ============================================================================
 def accept_probability(p_x: torch.Tensor, q_x: torch.Tensor) -> torch.Tensor:
@@ -54,7 +54,7 @@ def accept_probability(p_x: torch.Tensor, q_x: torch.Tensor) -> torch.Tensor:
 
 
 # ============================================================================
-# 【被拒之后采什么】用 (p - q) 的**正部**归一化后的分布重采样。
+# 【被拒之后采什么】用 (p - q) 的正部归一化后的分布重采样。
 #
 # 为什么是 p - q 的正部：先看代数 ——
 #     "未拒绝且命中 x"的概率 = q(x) · min(1, p(x)/q(x)) = min(q(x), p(x))
@@ -78,7 +78,7 @@ def residual_distribution(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # 逐行求和：每一行对应一个位置上的完整词表分布。
     total = r.sum(dim=-1, keepdim=True)
     # 正常情况除以总和即可；total == 0 说明 p 与 q 处处相等
-    # （此时接受概率恒为 1，走不到这里），回退到 p 本身是为了**绝不出 NaN** ——
+    # （此时接受概率恒为 1，走不到这里），回退到 p 本身是为了绝不出 NaN ——
     # 投机解码是"跑得快"的优化，任何数值意外都会污染整条序列。
     return torch.where(total > 0, r / total.clamp_min(_TINY), p)
 
@@ -102,7 +102,7 @@ def greedy_accept_length(
     # n 既是「已接受的个数」，也是「第一个不同的位置」（两者数值相同）。
     n = 0
     for d, t in zip(draft_ids, target_argmax):
-        # 第一个不同就停 —— 这是**自回归**决定的，不是优化：
+        # 第一个不同就停 —— 这是自回归决定的，不是优化：
         # 第 i 个草稿只有在前面 i 个都被接受的前提下才位于正确的位置上；
         # 拒绝点之后的所有草稿都作废（它们是在错误的前缀下产生的）。
         if d != t:
@@ -113,9 +113,9 @@ def greedy_accept_length(
 
 
 # ============================================================================
-# 【采样路径的接受判定】逐个位置判定，**遇到第一个拒绝就返回**。
+# 【采样路径的接受判定】逐个位置判定，遇到第一个拒绝就返回。
 #
-# 为什么不能"先全部判完再挑连续的接受段"：每个位置用的是**该位置**的
+# 为什么不能"先全部判完再挑连续的接受段"：每个位置用的是该位置的
 # (p, q) 对，而位置 i 的对只有在前面都被接受时才有意义（自回归）。
 # 所以只能从头逐个判、遇到拒绝立刻停下。
 # ============================================================================
@@ -151,7 +151,7 @@ def sample_accept(
 
     # 每个位置独立做一次伯努利判定：第 j 个位置用 (p_j, q_j) 这一对分布。
     for j in range(k):
-        # 草稿在该位置给出的 token —— 注意 p、q 都取**这同一个 token** 的概率。
+        # 草稿在该位置给出的 token —— 注意 p、q 都取这同一个 token 的概率。
         tok = int(draft_ids[j])
         p_x = target_probs[j, tok]
         q_x = draft_probs[j, tok]
@@ -171,7 +171,7 @@ def sample_accept(
             return j, extra
 
     # 全部接受，从 target 的最后一个位置采样
-    # 全部接受：还要额外从 target 的**第 K 个位置**采一个 token。
+    # 全部接受：还要额外从 target 的第 K 个位置采一个 token。
     # 这就是投机解码"多产出一个"的来源 —— 验证时多算的那个位置不是浪费。
     extra = int(torch.multinomial(target_probs[k], 1, generator=generator).item())
     return k, extra
@@ -179,7 +179,7 @@ def sample_accept(
 
 # ============================================================================
 # 【截断：为什么 draft 与 target 必须用同一套 top-k / top-p / min-p】
-# 因为真正被采样的分布是**截断并重新归一化之后**的分布，而不是原始 softmax。
+# 因为真正被采样的分布是截断并重新归一化之后的分布，而不是原始 softmax。
 # 若两边用不同的截断，p/q 就不在同一尺度上，min(1, p/q) 的推导前提不再成立 ——
 # 表面上还在跑，实际已经不再是"无损"了。
 # ============================================================================
@@ -207,12 +207,12 @@ def apply_top_k_top_p(
         sorted_p, idx = out.sort(dim=-1, descending=True)
         csum = sorted_p.cumsum(dim=-1)
         # 保留累积概率首次超过 top_p 的那个 token 本身
-        # 保留"累计概率**首次超过** top_p 的那个 token 本身"：
+        # 保留"累计概率首次超过 top_p 的那个 token 本身"：
         # csum 是含当前项的累计和，csum - sorted_p 是"不含当前项"的前缀和，
         # 所以 csum - sorted_p < top_p 正好表达"加我这一项之前还没超过阈值"。
         keep = csum - sorted_p < top_p
         mask = torch.zeros_like(out, dtype=torch.bool)
-        # scatter 把 mask 还原到**原始词表顺序**：上面 sort 打乱了位置，
+        # scatter 把 mask 还原到原始词表顺序：上面 sort 打乱了位置，
         # 直接在排序后的张量上做掩码会错位。
         mask.scatter_(-1, idx, keep)
         out = out.masked_fill(~mask, 0.0)

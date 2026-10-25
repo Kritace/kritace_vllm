@@ -1,7 +1,7 @@
 # ==============================================================================
 # 投机解码一步的编排：草稿 → 验证 → 接受/拒绝 → 产出 token。
 #
-# 本类**不直接接触** Worker / CUDA Graph / 并行通信，只依赖两个回调：
+# 本类不直接接触 Worker / CUDA Graph / 并行通信，只依赖两个回调：
 #   - drafter.propose(token_ids, k)  -> list[int]        草稿
 #   - target_forward(token_ids)      -> Tensor[K+1, V]   验证 logits
 # 因此可以在 CPU 上用假模型把整条链路单测掉
@@ -48,7 +48,7 @@ class Drafter(Protocol):
     上层 ``SpecEngine`` 因此不需要关心草稿是查表还是跑模型得到的。
     """
 
-    # 契约：返回最多 k 个候选，**不足 k 也没关系**（草稿器尽力而为）。
+    # 契约：返回最多 k 个候选，不足 k 也没关系（草稿器尽力而为）。
     # 返回空列表表示"这次没有草稿"，调用方应当退回普通 decode ——
     # 这与"草稿全被拒"是两件完全不同的事（后者仍会产出一个 token）。
     def propose(self, token_ids: list[int], k: int) -> list[int]:
@@ -78,7 +78,7 @@ class SpecStepResult:
     num_accepted: int = 0
     # 最终写进序列的 token：长度 1 ~ K+1（最少一个修正 token，最多全部草稿 + 白送的一个）。
     emitted: list[int] = field(default_factory=list)
-    # 提交给 target 验证的位置数 = K+1（**不是** k！）。
+    # 提交给 target 验证的位置数 = K+1（不是 k！）。
     # KV 侧要按这个数预留槽位（见 data/kv.py 的 can_append_n）。
     num_verified: int = 0
     """实际提交给 target 验证的位置数（= len(draft) + 1）。"""
@@ -97,7 +97,7 @@ class SpecStepResult:
 
 
 # ============================================================================
-# 投机解码的**编排器**：只管"草稿 → 验证 → 接受/产出"这三步的先后与取值，
+# 投机解码的编排器：只管"草稿 → 验证 → 接受/产出"这三步的先后与取值，
 # 不碰 Worker / CUDA Graph / 并行通信，也不碰 KV Cache 的物理布局。
 # 依赖只有两个回调（drafter 与 target_forward），所以能在 CPU 上单测。
 # ============================================================================
@@ -133,7 +133,7 @@ class SpecEngine:
         self._temperature: float = 1.0
 
     # 【构造验证输入】`[last_token, *draft]`
-    # 为什么要**重复**最后一个已生成的 token：这样 target 的第 i 个输出位置
+    # 为什么要重复最后一个已生成的 token：这样 target 的第 i 个输出位置
     # 就直接对应"第 i 个草稿该不该接受"，不必额外保存上一步的 logits。
     # 代价是多算一个位置（K 变 K+1），换来实现上的对称。
     def build_verify_input(self, token_ids: list[int], draft: list[int]) -> list[int]:
@@ -169,7 +169,7 @@ class SpecEngine:
         """
         # 第一步：要草稿（可能少于 K 个，也可能没有）。
         draft = self.drafter.propose(token_ids, self.k)
-        # 没有草稿 ⇒ 直接返回空结果，**由调用方退回普通 decode**。
+        # 没有草稿 ⇒ 直接返回空结果，由调用方退回普通 decode。
         # 关键区别：这里不是"草稿全被拒"（那还会产出一个修正 token），
         # 而是"这一步什么都没做"。混淆这两者会让调度器少跑一次前向。
         if not draft:

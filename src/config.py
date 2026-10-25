@@ -1,7 +1,7 @@
 # ============================================================================
 # 【本文件是做什么的】引擎配置：一个 dataclass 装下所有可调项，外加
-#     __post_init__ 里的**归一化**（补默认值、把 HF 配置里的字段搬进来）
-#     与 _validate_parallel 的**并行校验**（组合不合法时启动即报错）
+#     __post_init__ 里的归一化（补默认值、把 HF 配置里的字段搬进来）
+#     与 _validate_parallel 的并行校验（组合不合法时启动即报错）
 #
 # 【为什么校验要放在构造时】并行相关的错误（tp 不整除头数、EP 不整除专家数……）
 #     如果等到跑起来才炸，现象往往是"某张卡数值不对"或"通信卡死"，很难回溯到配置。
@@ -9,7 +9,7 @@
 #
 # 【两种并行对切分的要求不同（这是校验里最容易记混的一处）】
 #     不开 EP：MoE 按中间维切 ⇒ 要求 `moe_intermediate_size % tp_size == 0`；
-#     开了 EP：MoE 按**专家**切 ⇒ 要求 `num_experts % tp_size == 0`。
+#     开了 EP：MoE 按专家切 ⇒ 要求 `num_experts % tp_size == 0`。
 #
 # 【读配置的顺序】config.yaml 给默认值 → 命令行覆盖 → post_init 归一化 → 校验。
 #     所以"配置文件里写的"不一定是最终生效值（例如 dtype=auto 会被解析成 bfloat16）。
@@ -94,11 +94,11 @@ class EngineConfig:
     nccl_ifname: str = ""
     pp_layer_counts: list[int] | None = None
 
-    # 【EP 开关】注意它**不增加 world**：Attention 仍走原来的 TP，MoE 在同一批 rank 上按专家切。
+    # 【EP 开关】注意它不增加 world：Attention 仍走原来的 TP，MoE 在同一批 rank 上按专家切。
     # 所以开了 EP 之后 `world_size` 不变（见文件末尾的 world_size）。
     enable_ep: bool = False
     # fused MoE 的后端。'auto' = 运行时探测（cutlass 优先、退 Triton，见 moe/parallel.py）；
-    # 显式写 'cutlass' / 'triton' 则在不可用时**启动即报错**，不会静默降级。
+    # 显式写 'cutlass' / 'triton' 则在不可用时启动即报错，不会静默降级。
     moe_backend: Literal["auto", "cutlass", "triton"] = "auto"
 
     # --- 投机解码 ---
@@ -108,9 +108,9 @@ class EngineConfig:
     # `spec_ngram_max_n` 只对 n-gram 草稿有意义。三者一起决定"这一步要不要投机、用谁草稿"。
     spec_draft: str = ""
     # 每步提交给 target 验证的草稿长度 K。
-    # 【为什么默认 0（关闭）】投机不是无条件的优化，它的收益是**期望产出**：
+    # 【为什么默认 0（关闭）】投机不是无条件的优化，它的收益是期望产出：
     #     1 + α + α² + … + α^K   （α = 接受率；全接受时还会额外白送一个 token）
-    # α 低时每步只多产出很少，却要**多算 K 个位置**（K+1 个 query 的前向 + K+1 个位置的 KV），
+    # α 低时每步只多产出很少，却要多算 K 个位置（K+1 个 query 的前向 + K+1 个位置的 KV），
     # 净效果可能是变慢。所以默认关，由使用者按输入类型自己开
     # （n-gram 草稿只在含重复片段的输入上有 α）。
     num_speculative_tokens: int = 0
@@ -174,7 +174,7 @@ class EngineConfig:
         # 这个值决定了后面走哪条校验分支、以及模型侧建稠密层还是 MoE 层。
         self.is_moe = _is_moe_config(self.hf_config)
         text = getattr(self.hf_config, "text_config", self.hf_config)
-        # 用模型自身的最大位置编码**夹紧**用户填的 context_len：
+        # 用模型自身的最大位置编码夹紧用户填的 context_len：
         #   开得比模型支持的还大，RoPE 表会越界查，属于静默错误（位置编码全乱）。
         self.context_len = min(
             self.context_len,
@@ -185,7 +185,7 @@ class EngineConfig:
         # align / silu / sum / GEMM workspace 都按容量复用，不再逐步 cudaMalloc。
         # 若环境仍要强制 eager：KRITACE_MOE_FORCE_EAGER=1。
         # 【MoE + CUDA Graph 的逃生开关】MoE 的 fused kernel 会把 workspace 按容量池化，
-        # 因此**可以**进 CG（见 config 上方的说明）；但某些环境/驱动组合下仍会出问题，
+        # 因此可以进 CG（见 config 上方的说明）；但某些环境/驱动组合下仍会出问题，
         # 于是留一个环境变量 KRITACE_MOE_FORCE_EAGER=1 强制退回 eager，便于定位问题。
         if self.is_moe and os.environ.get("KRITACE_MOE_FORCE_EAGER", "0") in (
             "1",
@@ -273,11 +273,11 @@ class EngineConfig:
         return self.num_speculative_tokens > 0 and bool(self.spec_draft)
 
     @property
-    # 单 Engine 的 NCCL world：**不含 dp**。
+    # 单 Engine 的 NCCL world：不含 dp。
     # DP 的多个副本是互相独立的引擎，各自有自己的 world（见 control/mp_client.py）。
     def world_size(self) -> int:
         """单 Engine 的 NCCL world（不含 DP 副本）。"""
-        # 注意**不含 dp** —— DP 是独立的 Engine，不在同一个 NCCL world 里。
+        # 注意不含 dp —— DP 是独立的 Engine，不在同一个 NCCL world 里。
         # tp × pp 才是参加集合通信的进程数；把 dp 乘进来会让 NCCL 初始化等一个永远不来的 rank。
         return self.tp_size * self.pp_size
 

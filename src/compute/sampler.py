@@ -6,14 +6,14 @@
 #     `torch.multinomial` 要跑一次排序/累积和（C++ 侧逐行循环，batch 大时是瓶颈，
 #     而且形状/取值依赖随机数，不利于图捕获）。
 #     Gumbel-max 把采样变成"给 logits 加噪 → 取 argmax"：
-#         `argmax(logits / T + gumbel_noise)` 与按 softmax(logits/T) 采样**同分布**，
+#         `argmax(logits / T + gumbel_noise)` 与按 softmax(logits/T) 采样同分布，
 #     全部是逐元素运算，能融进同一次 kernel、也能被 CUDA Graph 捕获。
 #
 # 【两条路径的分工】
 #     "只有温度"这一种采样 → 可以 compile 成一张固定图（Gumbel-max 全逐元素）；
 #     一旦混入 top-k / top-p → 走通用路径（排序、阈值、掩码，形状与数据相关）。
 #
-# ⚠️ 贪心（temperature=0）与采样的分支必须在**图外**决定：
+# ⚠️ 贪心（temperature=0）与采样的分支必须在图外决定：
 #   把数据相关的分支放进 CUDA Graph 会导致重放时走错分支。
 # ============================================================================
 
@@ -23,7 +23,7 @@ from torch import nn
 
 
 # Gumbel-max 技巧：给每个 logits 加一个 Gumbel 噪声再取 argmax，
-# 数学上**等价于**按 softmax 概率采样，但省掉了完整的概率归一化。
+# 数学上等价于按 softmax 概率采样，但省掉了完整的概率归一化。
 #
 # 这里刻意不加 @torch.compile，理由写在本函数上方：
 #   连续批处理下 decode 的 batch size 随请求陆续完成而动态递减，
@@ -56,7 +56,7 @@ class Sampler(nn.Module):
 
     # 【参数分成两类，看那个 * 号】
     # 前的：每条请求各一份的数据张量
-    # 后的（keyword-only）：**整批共享**的开关与上限，全部由 CPU 侧预先判定
+    # 后的（keyword-only）：整批共享的开关与上限，全部由 CPU 侧预先判定
     # 之所以把开关做成整批的布尔量而不是每条一个，是因为 kernel 里没法按行分支 ——
     # 一旦有请求需要 top-k，整批就走 top-k 路径（多余的计算由掩码挡掉）。
     def forward(
@@ -163,7 +163,7 @@ class Sampler(nn.Module):
         if top_ps is not None or min_ps is not None:
             remove = torch.zeros_like(probs, dtype=torch.bool)
 
-            # top-p 的判据基于**累积概率**：把累计到当前（不含自己）已经超过 p 的位置去掉。
+            # top-p 的判据基于累积概率：把累计到当前（不含自己）已经超过 p 的位置去掉。
             # 写的是 (cum - probs) 而不是 cum：这一步保证"刚好跨过阈值的那一个"被保留，
             # 否则累积和恰好等于 p 时会把边界项也删掉，与定义不符。
             if top_ps is not None:

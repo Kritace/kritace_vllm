@@ -1,11 +1,11 @@
 # ============================================================================
-# 【本文件是做什么的】在**导入 FlashInfer 之前**，把它要编译的 GPU 架构列表钉死。
+# 【本文件是做什么的】在导入 FlashInfer 之前，把它要编译的 GPU 架构列表钉死。
 #
-# 【为什么必须提前做】FlashInfer 的 JIT kernel 在**进程启动时**根据环境变量
+# 【为什么必须提前做】FlashInfer 的 JIT kernel 在进程启动时根据环境变量
 # `FLASHINFER_CUDA_ARCH_LIST` 决定编译哪几档架构。默认行为是"按当前可见的 GPU"猜：
 #     · 异构机器（例如 4090 + 4070 混插）上，它可能只编译其中一档，
 #       另一张卡跑到对应 kernel 时就报 "no kernel image"；
-#     · 用 CUDA_VISIBLE_DEVICES 限制可见卡时，它看到的是**被限制后**的设备，
+#     · 用 CUDA_VISIBLE_DEVICES 限制可见卡时，它看到的是被限制后的设备，
 #       与真正要用的卡可能对不上。
 # 所以这里显式把"本次要用的那几张卡"的架构列出来，交给 FlashInfer 一次性编全。
 #
@@ -31,10 +31,10 @@ def format_flashinfer_arch(major: int, minor: int) -> str:
     if major == 9:
         return f"{major}.{minor}a"
     # major 12 是最麻烦的一档：
-    # `12.0f`（family 名）能覆盖同族所有小版本，但**要求 nvcc ≥ 12.9**；
+    # `12.0f`（family 名）能覆盖同族所有小版本，但要求 nvcc ≥ 12.9；
     # 若 nvcc 只有 12.8，只能用 `12.0a`。
     # 关键提醒（作者原注释）：不要只看 torch.version.cuda ——
-    # 那说的是 PyTorch 编译时的 CUDA 版本，而这里要的是**编译 kernel 用的 nvcc**，
+    # 那说的是 PyTorch 编译时的 CUDA 版本，而这里要的是编译 kernel 用的 nvcc，
     # 完全可能是一个更新/更旧的本地 toolkit（wheel 是 cu129、系统 nvcc 还是 12.8）。
     if major == 12:
         # SM120: ``12.0f`` needs *nvcc* ≥ 12.9. Do NOT trust torch.version.cuda
@@ -79,7 +79,7 @@ def format_flashinfer_arch(major: int, minor: int) -> str:
 
 # 【把一组设备换算成架构列表】输入是本次要用的 GPU 编号（例如 [0, 1] 或 [1, 2, 4, 5]），
 # 输出是空格分隔的架构串（例如 "8.9a" 或 "8.9a 12.0a"），直接写进环境变量。
-# 注意输入是**设备编号**而不是"当前设备"—— 多卡时每张卡都可能是不同架构。
+# 注意输入是设备编号而不是"当前设备"—— 多卡时每张卡都可能是不同架构。
 def flashinfer_arch_list_for_devices(device_ids: Sequence[int]) -> str:
     import torch
 
@@ -100,7 +100,7 @@ def flashinfer_arch_list_for_devices(device_ids: Sequence[int]) -> str:
         # 取该卡的 compute capability —— 这才是「要编哪档架构」的真实依据。
         major, minor = torch.cuda.get_device_capability(di)
         arch = format_flashinfer_arch(int(major), int(minor))
-        # 去重靠 seen 集合而不是去重列表：保持**首次出现顺序**，
+        # 去重靠 seen 集合而不是去重列表：保持首次出现顺序，
         # 这样输出的架构串在不同卡序下仍然可读、可比对。
         if arch not in seen:
             seen.add(arch)
@@ -132,7 +132,7 @@ def apply_flashinfer_arch_list(
     *,
     overwrite: bool = False,
 ) -> str:
-    # overwrite=False 时**尊重外部已设的值**：运维可以在启动脚本里
+    # overwrite=False 时尊重外部已设的值：运维可以在启动脚本里
     # 自己指定 FLASHINFER_CUDA_ARCH_LIST（例如为了复用编译缓存），这里就不去覆盖它。
     # overwrite=True 用于"以代码里的推导为准"。
     if overwrite or "FLASHINFER_CUDA_ARCH_LIST" not in os.environ:

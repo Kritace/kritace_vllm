@@ -1,5 +1,5 @@
 # ============================================================================
-# 【本文件是做什么的】一个**全局分段计时器**：把一步推理按模块切开分别计时，
+# 【本文件是做什么的】一个全局分段计时器：把一步推理按模块切开分别计时，
 # 用来看"时间到底花在哪一段"（驱动循环 / RPC / 调度 / 前向 / 通信 / PP 传输）。
 #
 # 【为什么要按"模块名.细分名"打点】问题常常出在某一段内：
@@ -7,11 +7,11 @@
 # 于是约定名字里用 `.` 分层，rollup() 按第一段汇总、summary() 给出全部细分。
 #
 # 【为什么默认关闭】计时本身要花时间（perf_counter 调用、字典累加），
-# 而且 `CudaTimer` 会做 `torch.cuda.synchronize()` —— 那会**改变被测程序的并行行为**：
+# 而且 `CudaTimer` 会做 `torch.cuda.synchronize()` —— 那会改变被测程序的并行行为：
 # 本来 CPU 可以跑在前面、GPU 排队，一同步就退化成逐步串行，测出来的数字完全不同。
 # 所以：默认关，靠环境变量 KRITACE_SYS_PROF 打开，且只用来定位瓶颈，不用来报性能数。
 #
-# ⚠️ 用 CudaTimer 测出来的段时**加起来不等于总时间**：每次同步都会砍掉重叠部分。
+# ⚠️ 用 CudaTimer 测出来的段时加起来不等于总时间：每次同步都会砍掉重叠部分。
 #   要报吞吐就用引擎自己的统计，不要拿 profiler 的数去加。
 # ============================================================================
 
@@ -36,7 +36,7 @@ MODULE_TREE: dict[str, str] = {
     "layer": "Optional fine-grained layer hooks",
 }
 
-# 开关在**模块导入时**读一次环境变量。
+# 开关在模块导入时读一次环境变量。
 # 这意味着：运行中改环境变量不生效（要配合 set_enabled 或重启进程）。
 _ENABLED = os.environ.get("KRITACE_SYS_PROF", "").strip() in ("1", "true", "True")
 
@@ -76,7 +76,7 @@ class SysProfiler:
     def reset(self) -> None:
         self.buckets.clear()
 
-    # 返回**全部**细分条目的完整统计（名字 → count/total/mean）。
+    # 返回全部细分条目的完整统计（名字 → count/total/mean）。
     # 按名字排序输出，方便两次运行之间做 diff。
     def summary(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -162,7 +162,7 @@ class Timer:
 
 
 # 【GPU 侧计时】用 CUDA event 而不是 CPU 时钟：
-# kernel 是**异步**提交的，CPU 上的 start/end 之间只代表"提交完"，不代表算完。
+# kernel 是异步提交的，CPU 上的 start/end 之间只代表"提交完"，不代表算完。
 # event 打在流里，测的是真实的 GPU 执行时间。
 class CudaTimer:
     """CUDA-event timer (device sync on exit). Prefer ``Timer`` for CPU paths."""
@@ -195,7 +195,7 @@ class CudaTimer:
             return False
         import torch
 
-        # 在流里打个结束标记，然后**同步等待** —— 不等待就读 elapsed_time 会读到 0。
+        # 在流里打个结束标记，然后同步等待 —— 不等待就读 elapsed_time 会读到 0。
         # 注意代价：这个 sync 会把 CPU/GPU 的重叠抹掉（见文件头 ⚠️）。
         self._end.record()
         torch.cuda.synchronize()

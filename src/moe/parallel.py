@@ -1,22 +1,22 @@
 # ============================================================================
-# 【本文件是做什么的】MoE 的**并行布局**（EP）与 fused MoE 后端的**选择点**。
+# 【本文件是做什么的】MoE 的并行布局（EP）与 fused MoE 后端的选择点。
 #
 # 【为什么 MoE 的切法和稠密层不一样】
 #     稠密层用 TP：把一个矩阵切开，每卡算一片，最后 all-reduce。
-#     MoE 层不该这么切 —— 专家之间**互相独立**，谁跟谁都不用相加。
+#     MoE 层不该这么切 —— 专家之间互相独立，谁跟谁都不用相加。
 #     以 tests/gpu/test_moe_kernel.py 那个真实用例为例（8 个专家、ep=2）：
-#         · TP 切法：每卡都要算**全部 8 个专家**，只是每个专家的中间维切成一半
+#         · TP 切法：每卡都要算全部 8 个专家，只是每个专家的中间维切成一半
 #           ⇒ 一半算力是白算的（结果还得 all-reduce 才凑得回一个专家）；
-#         · EP 切法：卡 0 只放专家 0–3 的**完整**权重，卡 1 只放专家 4–7
+#         · EP 切法：卡 0 只放专家 0–3 的完整权重，卡 1 只放专家 4–7
 #           ⇒ 显存按专家个数除。Qwen3-MoE 有 128 个专家，就是靠这个才装得下。
 #
-# 【EP 的通信是什么】all-reduce —— 和稠密 TP **同一个原语、同一条 hidden 维**，
-#     因为每张卡拿到的都是完整 [T, H]，单卡只能算出**局部和**（只含自己那几个专家的贡献），
+# 【EP 的通信是什么】all-reduce —— 和稠密 TP 同一个原语、同一条 hidden 维，
+#     因为每张卡拿到的都是完整 [T, H]，单卡只能算出局部和（只含自己那几个专家的贡献），
 #     出口一次 all-reduce 才是完整结果。
-#     DeepEP / PPLX 那种"用 all-to-all 把 token 搬到专家所在卡"的做法本项目**没有**做
+#     DeepEP / PPLX 那种"用 all-to-all 把 token 搬到专家所在卡"的做法本项目没有做
 #     （token 留在本地、不搬，见 docs/04-MoE与并行.md）。
 #
-# 【共享专家带来的顺序约束】共享专家在每卡都是**完整一份**，
+# 【共享专家带来的顺序约束】共享专家在每卡都是完整一份，
 #     所以必须先 all-reduce、再相加；顺序写反同一项会被加 ep 次（顺序写在 block.py）。
 #
 # 【为什么后端要"探测"而不是写死】两个 fused 后端各有硬前提：
@@ -64,7 +64,7 @@ def _sm_tag(device: int | None = None) -> int | None:
     return major * 10 + minor
 
 
-# 【为什么要探测 nvcc 版本】FlashInfer 的 cutlass kernel 要**现场编译**（JIT），
+# 【为什么要探测 nvcc 版本】FlashInfer 的 cutlass kernel 要现场编译（JIT），
 # 新架构（SM ≥ 120）需要 nvcc ≥ 12.8 才认识那些 SM 编号。
 # 版本不够时是"编译失败"而不是"跑得慢" —— 与其等到跑起来才炸，不如在选后端时就把它排除。
 def _nvcc_version() -> tuple[int, int] | None:
@@ -89,7 +89,7 @@ def _nvcc_version() -> tuple[int, int] | None:
 
 
 # 【cutlass 可用的三个前提】架构在名单里 + flashinfer 装上了 + 新架构时 nvcc 够新。
-# 三者缺一就返回 False —— 注意这里**不抛异常**，"能不能用"是查询，"用不用"由 resolve 决定。
+# 三者缺一就返回 False —— 注意这里不抛异常，"能不能用"是查询，"用不用"由 resolve 决定。
 # SM 89 在第 2 行就通过；换成 3090（SM 86）会直接返回 False。
 def cutlass_moe_available(*, device: int | None = None) -> bool:
     sm = _sm_tag(device)
@@ -118,7 +118,7 @@ def triton_moe_available() -> bool:
 
 
 # 【后端选择顺序】三层：
-#     显式指定 → 不可用就**报错**（不静默降级）；
+#     显式指定 → 不可用就报错（不静默降级）；
 #     auto     → cutlass 优先（通例更快），退 Triton；
 #     都没有   → 报错，并把 sm 与 nvcc 版本一起打出来。
 # 为什么显式指定时不允许"悄悄换后端"：那样你会以为自己在跑 cutlass、其实跑的是 Triton，
@@ -153,7 +153,7 @@ def resolve_moe_backend(
 
 
 # 【MoE 的并行布局】frozen dataclass：构造后不可改，避免运行中被谁改掉一半。
-# 关键点：tp 与 ep **互斥** —— use_ep=True 时 MoE 的 tp 被固定成 1（见 from_engine）。
+# 关键点：tp 与 ep 互斥 —— use_ep=True 时 MoE 的 tp 被固定成 1（见 from_engine）。
 @dataclass(frozen=True)
 class MoEParallelConfig:
     """``enable_ep``: collapse MoE TP; shard experts across the old TP ranks."""
@@ -194,7 +194,7 @@ class MoEParallelConfig:
         # 含义是「TP 组本身不变，但在这组 rank 上把 MoE 层从『切中间维』改成『切专家』」：
         # 第 i 个 TP rank 负责第 i 段专家（8 个专家、tp=2 → 卡 0 拿 0–3、卡 1 拿 4–7）。
         # 这样 Attention 仍在原来的 TP 组里做 all-reduce，MoE 复用同一个组，
-        # **不需要新建 NCCL 组、world_size 也不变**。
+        # 不需要新建 NCCL 组、world_size 也不变。
         if enable_ep and tp_size > 1:
             # 不满足条件（没开 EP，或只有一张卡）→ 退回普通 TP 布局：
             # ep 恒为 1，MoE 与稠密层一样按中间维切。

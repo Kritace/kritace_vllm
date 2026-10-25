@@ -32,7 +32,7 @@ class HashPrefixIndex:
     def match(self, seq: Sequence, pool: BlockManager) -> list[int]:
         h = -1
         hit: list[int] = []
-        # 只遍历**满块**（num_full_blocks 是整除结果）：
+        # 只遍历满块（num_full_blocks 是整除结果）：
         #   不满的块内容不完整，不能作为前缀被匹配。
         for i in range(seq.num_full_blocks()):
             toks = seq.block_token_ids(i)
@@ -42,12 +42,12 @@ class HashPrefixIndex:
             bid = self.hash_to_block_id.get(h, -1)
             if bid < 0:
                 break
-            # 哈希命中**不等于**内容相同 —— 必须逐 token 比对确认（防碰撞）。
+            # 哈希命中不等于内容相同 —— 必须逐 token 比对确认（防碰撞）。
             # 少了这一步，一旦碰撞就会静默算出错误结果。
             block = pool.blocks[bid]
             if block.token_ids != toks:
                 break
-            # 还要确认这个页**当前是可用的**：
+            # 还要确认这个页当前是可用的：
             #   used    → 正被别的在跑请求占着，共享它会让引用计数错乱
             #    cached  → 可以共享（这正是缓存的意义）
             #    两者都不是 → 页处于 free 或已被回收，它的内容随时会被覆盖
@@ -82,12 +82,12 @@ class HashPrefixIndex:
             bid = seq.block_table[i]
             toks = seq.block_token_ids(i)
             h = compute_block_hash(toks, h)
-            # 顺序：先把哈希与 tokens 记到**页对象**上，再更新字典。
+            # 顺序：先把哈希与 tokens 记到页对象上，再更新字典。
             # 因为页对象上的 hash 是后续"从中间发布"和"invalidate 定位"的依据。
             pool.blocks[bid].update(h, toks)
             old = self.hash_to_block_id.get(h, -1)
             # 只有当"没有旧条目 / 旧的就是自己 / 旧的内容确实相同"时才覆盖。
-            # 如果旧条目指向一块内容**不同**的页（哈希碰撞），就不能覆盖 ——
+            # 如果旧条目指向一块内容不同的页（哈希碰撞），就不能覆盖 ——
             # 保留原来那个更安全（宁可少命中，也不能命中错）。
             if old < 0 or old == bid or pool.blocks[old].token_ids == toks:
                 self.hash_to_block_id[h] = bid
@@ -97,7 +97,7 @@ class HashPrefixIndex:
         block = pool.blocks[block_id]
         # 两个条件都要满足：
         #   ① 这个页确实登记过（hash != -1）
-        #    ② 索引里当前指向的**正是这个页**（可能已经被别人覆盖成了别的页号，
+        #    ② 索引里当前指向的正是这个页（可能已经被别人覆盖成了别的页号，
         #       那种情况下删掉就会误伤别人）
         if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id:
             del self.hash_to_block_id[block.hash]
