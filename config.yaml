@@ -54,4 +54,4 @@ moe_backend: "auto"       # auto / cutlass / triton；MoE 可开 --cg（workspac
 # enforce_eager: false → decode piecewise CUDA Graph（PP 时 recv/send 图外）；
 # torch_compile: true → prefill torch.compile（含 TP 时用 max-autotune-no-cudagraphs）。
 # 覆盖方式：命令行加 --cg / --compile。
-# 并行语义：dp=独立 Engine 副本；tp/pp=同 Engine NCCL（见 docs/04-控制与并行.md）。
+# 并行语义：dp=独立 Engine 副本；tp/pp=同 Engine NCCL（见 docs/04-MoE与并行.md）。

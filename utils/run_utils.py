@@ -79,8 +79,13 @@ def dummy_token_ids(n: int, salt: int = 0) -> list[int]:
     return [((i * 7919 + 10007 + salt * 97) % 100000) + 100 for i in range(n)]
 
 
-def drain_engine(is_finished: Callable[[], bool], step: Callable[[], None]) -> None:
-    while not is_finished():
+def drain_engine(has_unfinished: Callable[[], bool], step: Callable[[], None]) -> None:
+    """把队列跑空：只要还有未完成的请求就一直 step。
+
+    注意参数语义是 has_unfinished（有未完成的就继续），不是 is_finished ——
+    传反了会让循环一次都不执行（warmup 于是变成空操作）。
+    """
+    while has_unfinished():
         step()
 
 

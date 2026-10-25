@@ -271,7 +271,7 @@ class EngineCore:
         self.scheduler = None
         # 观测收尾：把机制统计与 GPU 探针结果打出来（两个 env 都默认关）。
         if os.environ.get("KRITACE_ZOS_STATS", "0").strip().lower() not in ("0", "", "false", "no"):
-            zos_stats_dump()
+            print(zos_stats_dump(), flush=True)
         if os.environ.get("KRITACE_ZOS_GPU", "0").strip().lower() not in ("0", "", "false", "no"):
             gpu_stats_dump()
         gc.collect()

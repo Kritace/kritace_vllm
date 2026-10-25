@@ -1,15 +1,20 @@
-transformers>=4.45.0
-safetensors>=0.4.0
-huggingface_hub>=0.23.0
-tqdm>=4.66.0
-xxhash>=3.0.0
-numpy>=1.24.0
-triton>=3.0.0
-setuptools>=68.0.0
-Pillow>=10.0.0
-qwen-vl-utils>=0.0.8
-torchvision>=0.19.0
-pyzmq>=25.0.0
-fastapi>=0.110.0
-uvicorn>=0.27.0
-pydantic>=2.0.0
+# 核心运行时
+# torch 请按你的 CUDA 版本单独安装（见 README §1），不要 pip 直接装默认版
+torch>=2.4
+triton>=3.0
+transformers>=4.45
+safetensors>=0.4
+huggingface_hub>=0.23
+numpy>=1.24
+tqdm>=4.66
+msgspec>=0.18
+pyzmq>=25.0
+PyYAML>=6.0
+
+# 算子：RoPE / RMSNorm / SiLU-and-mul 的融合 kernel，硬依赖
+flashinfer-python>=0.2
+
+# ---- 可选 ----
+# flash-attn>=2.5      # 分页 KV 注意力。不装则退回纯 torch SDPA（能跑，慢 5-10 倍，且 CUDA Graph 无法捕获）
+# xxhash>=3.0         # 前缀缓存 hash 后端。不装则退回 hashlib（略慢）
+# pytest>=8.0         # 跑 tests/
