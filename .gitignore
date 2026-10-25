@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 构建产物 / 编译扩展
+build/
+dist/
+*.so
+*.o
+*.cu.o
+torch_extensions/
+
+# 模型权重与缓存（不要进仓库）
+models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+.cache/
+hf_cache/
+
+# 运行产物
+*.log
+*.sqlite
+*.nsys-rep
+*.ncu-rep
+*.qdrep
+out/
+tmp/
+bench_out/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
