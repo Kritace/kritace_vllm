@@ -354,7 +354,7 @@ python -m pytest tests/unit -q                    # 33 passed, 1 skipped，不�
 python -m pytest tests/gpu -q                     # 需要模型权重；没装模型会自动 skip
 torchrun --nproc_per_node 2 -m pytest tests/distributed -q
 
-bash bench/final.sh /tmp/final.txt                # ZOS 0/1 逐 token 对拍（三组场景）
+PY=$(which python) bash bench/final.sh /tmp/final.txt   # ZOS 0/1 逐 token 对拍（python3 没装 torch 时用 PY= 指定）
 python bench/repro_zos.py --rounds 3              # 气泡 / 等待 / 正确性汇总
 python bench/cpu_bubble.py                        # 分相计时：B 的量级
 python bench/zos_matrix.py --case short --n 8 --max-tokens 32 --blocks 48
