@@ -7,7 +7,7 @@
 #             → Worker / ModelRunner 的 build_decode / build_prefill
 #     Scheduler.update    →  EngineCoreOutput（增量 token）→ 回到门面 Engine
 #
-# 【为什么要有 to_wire 这一步】v3 是单进程，调度器给的 Sequence 可以直接被
+# 【为什么要有 to_wire 这一步】单进程时，调度器给的 Sequence 可以直接被
 # 计算层读；多进程下 Sequence 里带着整条 token 历史、块表、引用计数等，
 # 既大又不该跨进程传。所以在这里裁剪出前向真正需要的字段，
 # 顺带把"能共享的就共享"（块表不拷贝，见下）。

@@ -146,7 +146,7 @@ class RadixPrefixIndex:
     def invalidate(self, block_id: int, pool: BlockManager) -> None:
         del pool
         # 与 hash 后端的关键差异：hash 是"删字典条目"（真的删），
-        # radix 是"摘树叶"（真的从树上摘掉）。v2 的 radix 是假实现（只删条目不摘树叶），
+        # radix 是"摘树叶"（真的从树上摘掉）。只删条目不摘树叶的实现是假回收，
         # 这里补上了 —— 否则树会一直挂着已经失效的叶子，浪费内存且干扰 LRU。
         self.tree.detach_leaf_for_block(block_id)
 

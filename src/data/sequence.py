@@ -85,7 +85,7 @@ class Sequence:
     num_scheduled_tokens: int = 0
     # 本步 prefill 是否已经覆盖完整 prompt，需要采样。
     need_sample: bool = False
-    # is_prefill 这个字段语义比较模糊（v2 遗留），实际判断以 need_sample 为准。
+    # is_prefill 这个字段语义比较模糊（历史遗留），实际判断以 need_sample 为准。
     is_prefill: bool = True
     num_prompt_tokens: int = 0
     temperature: float = 0.0

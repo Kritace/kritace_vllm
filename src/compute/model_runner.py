@@ -159,7 +159,7 @@ class ModelRunner:
         self.is_last_pp = pp.is_last_rank
         self.is_driver = self.is_last_pp and tp.group_rank == 0
 
-        # ---------- 输入张量的预分配（v3「输入管线」优化的落点）----------
+        # ---------- 输入张量的预分配（输入管线的落点）----------
         # 三行分别算：最大序列数、单序列最多占多少页、以及下面 Batch 的总容量。
         # max_bs 要 min(max_num_seqs, 256) —— 因为 CUDA Graph 要为每个 batch size
         # 各捕获一张图。上限开太大（比如 1024）会把启动时间与显存拖垮。

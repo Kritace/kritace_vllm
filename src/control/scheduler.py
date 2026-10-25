@@ -354,7 +354,7 @@ class Scheduler:
         self._schedule_decode(prefills, decodes, 0)
         return [], decodes
 
-    # ==================== 策略 B：混合调度（v3 默认）====================
+    # ==================== 策略 B：混合调度（默认）====================
     # 先尽力安排 decode，再用剩下来的 token 预算去拉 prefill。
     # 特点：decode 的 ITL 稳定（老请求优先），长 prompt 靠剩余预算一点点推进 ——
     #       既不会被饿死，也不会把 decode 挤走。这是连续批处理想要的那个效果。
@@ -377,7 +377,7 @@ class Scheduler:
 
     # ==================== 抢占 ====================
     # 语义 = "把这条序列的 KV 全部丢掉，让它回 waiting 从头再来"。
-    # v3 只实现了 recompute 这一种做法（没有 swap 到 CPU 的实现），依据是：
+    # 这里只实现 recompute 这一种做法（没有 swap 到 CPU 的实现），依据是：
     #     重算代价 = 重新读一遍 prompt 的 prefill（compute-bound，且能和其他请求并行）
     #     换出代价 = 页数据拷进拷出，拷回来时还要等 PCIe 带宽（且期间还占着 CPU 内存）
     # 短序列重算更划算；序列很长且机器 PCIe 很宽时这个判断会反过来。
