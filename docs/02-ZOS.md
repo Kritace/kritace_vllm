@@ -79,9 +79,10 @@ outputs = self.scheduler.finish(prev, p_ids, d_ids)
 | 在途序列的块落地前不归还 | 下一批可能还要写它最后一格 | `src/control/scheduler.py:594 _release_later()` 把释放推迟一轮，`finish()` 开头统一 flush |
 | 采样结果双缓冲 + 同流拷贝 | 第 N 批的 pinned 缓冲不能被第 N+1 批覆盖；拷贝必须与计算同流 | `model_runner.py:579 _stage_samples()`：两块 event / 两块 pinned，`slot` 随 `run()`/`read_samples()` 传递 |
 
-另外两处配套改动：
+另外三处配套改动：
 
 - **半截 prefill 挡在门外**：块中间被切开的序列这一轮没有采样结果可回灌，记进 `_blocked`，调度时直接 `break`（`scheduler.py:179`、`:275`）。
+- **输入暂存也要防覆盖**：`_stage_samples` 只给**采样结果**做了双缓冲，输入侧的锁页缓冲仍是单份 —— ZOS 下 CPU 不再等采样，可能在上一次 H2D 还没落地时就改写它（同步模式不会，因为组包前已经 synchronize）。`build_decode` / `build_prefill` 开头因此多一次 `self._h2d_event.query()`，没落地才 `synchronize()`（`src/compute/batch.py:188`、`:206`、`:261`、`:329`）。实测从不真的等待（`KRITACE_ZOS_STATS=1` 下不会打出 `[h2d-guard]`），所以它不破坏零开销。
 - **按位置算块**：账本落后一步时旧判据 `len(seq) % block_size == 1` 会少分配一块，改用 `can_append_at(seq, pos)` / `may_append_at(seq, pos)`（`src/data/block_manager.py:266`、`src/data/kv.py:179`）。
 
 ## 5. 代码地图
