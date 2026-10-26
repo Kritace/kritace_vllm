@@ -150,7 +150,7 @@ def _ext():
                 "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
                 "-U__CUDA_NO_HALF2_OPERATORS__",
                 # 四档架构一次编全：80 / 86 / 89 / 120a。
-                # 89 是本机与服务器（4090D）；120a 是新架构带 accelerated 特性。
+                # 89 是 4090/4090D 这一代；120a 是新架构带 accelerated 特性。
                 # 多编几档会让首次编译更慢、产物更大 —— 换来的是"换机器不用改代码"。
                 "-gencode=arch=compute_80,code=sm_80",
                 "-gencode=arch=compute_86,code=sm_86",

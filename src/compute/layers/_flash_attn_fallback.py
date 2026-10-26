@@ -116,7 +116,7 @@ def _with_kvcache_batched(
     )
     pad = neg.repeat_interleave(block_size, dim=1)
     # 页是分配单位（这里 256 行），但本批最长也就 max_len 行：
-    # 不截断的话要按整页算，白算十几倍（4090 上不明显，这张卡上非常明显）。
+    # 不截断的话要按整页算，白算十几倍（大显存卡上不明显，4 GB 卡上非常明显）。
     flat = flat[:, :max_len]
     pad = pad[:, :max_len]
 

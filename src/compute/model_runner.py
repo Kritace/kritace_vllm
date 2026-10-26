@@ -123,6 +123,30 @@ def zos_stats_dump() -> str:
 
 # 一轮前向的执行器。构造期就把三类重活干完（预分配 / 捕获 graph / 编译 prefill），
 # 这样进入推理期后不再有任何"第一次"的开销，延迟才不会抖。
+# 贪心步 top1-top2 的裕度探针（KRITACE_MARGIN=1 才开）。
+# 用途：判断"换一种 batch 组成会不会翻转 argmax"——裕度远大于数值噪声就不可能翻。
+_MARGIN_ON = os.environ.get("KRITACE_MARGIN", "0").strip().lower() not in (
+    "0",
+    "",
+    "false",
+    "no",
+)
+_MARGIN: list[float] = []
+
+
+def margin_stats() -> dict:
+    if not _MARGIN:
+        return {}
+    xs = sorted(_MARGIN)
+    n = len(xs)
+    return {
+        "n": n,
+        "min": xs[0],
+        "p1": xs[max(0, int(n * 0.01) - 1)],
+        "p50": xs[n // 2],
+    }
+
+
 class ModelRunner:
     # 构造期做完三件事：预分配输入张量、捕获 CUDA Graph、编译 prefill 图。
     # 顺序无所谓，但都必须在第一个请求进来之前完成 ——
@@ -541,7 +565,8 @@ class ModelRunner:
     # 末段的出口：整批贪心走 argmax，否则算 logits 再采样。
     def _sample_logits(self, hidden: torch.Tensor, bs: int) -> torch.Tensor | None:
         # 整批贪心时直接 argmax，跳过整个词表投影与概率计算。
-        if self.batch.all_greedy:
+        # 探针开着时不走这条捷径：要拿到 logits 才算得出 top1-top2。
+        if self.batch.all_greedy and not _MARGIN_ON:
             # 这是 decode 的默认路径，省下的正是最大的一次矩阵乘。
             ids = self.model.argmax(hidden)
             if not self.is_driver:
@@ -550,6 +575,9 @@ class ModelRunner:
         # 只需要"每序列最后一个 token"的 hidden 去出 logits —— 词表投影是个大矩阵乘
         # （hidden × vocab），单独拎出来也是为了让它可以被独立融合/优化。
         logits = self.model.compute_logits(hidden)
+        if _MARGIN_ON and self.batch.all_greedy:
+            top2 = logits.float().topk(2, dim=-1).values
+            _MARGIN.append(float((top2[:, 0] - top2[:, 1]).min().item()))
         if not self.is_driver:
             return None
         return self._sample(bs, logits)
