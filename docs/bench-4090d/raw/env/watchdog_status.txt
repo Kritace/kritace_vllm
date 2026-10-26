@@ -1,0 +1,37 @@
+更新时间: 2026-09-27T01:34:26+08:00
+01:34:26 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=0 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=True mode=cg FAIL=1 | MoE=27G
+--- v4 结果 ---
+0.6b-pp2-eager | ttft=15.72ms | decode=85.6 | batch8=583.8
+0.6b-pp2-cg | ttft=20.50ms | decode=342.4 | batch8=2033.7
+0.6b-single-eager | ttft=25.76ms | decode=49.5 | batch8=354.6
+0.6b-single-cg | ttft=25.86ms | decode=449.7 | batch8=2699.3
+0.6b-single-compile | ttft=5.07ms | decode=50.3 | batch8=347.6
+0.6b-single-cg+compile | ttft=5.36ms | decode=446.8 | batch8=2573.6
+0.6b-tp2-eager | ttft=31.24ms | decode=37.9 | batch8=278.7
+0.6b-tp2-cg | ttft=30.81ms | decode=401.9 | batch8=2184.2
+0.6b-tp2-compile | ttft=34.99ms | decode=35.6 | batch8=270.9
+0.6b-tp2-cg+compile | ttft=35.82ms | decode=404.6 | batch8=2146.7
+0.6b-pp2-eager | ttft=15.93ms | decode=79.9 | batch8=581.6
+0.6b-pp2-cg | ttft=18.35ms | decode=336.6 | batch8=2013.0
+0.6b-pp2-compile | ttft=13.95ms | decode=81.1 | batch8=546.4
+FAIL 0.6b-pp2-cg+compile: RuntimeError:  could not find 0x7f20b3a00000
+--- v5 结果 ---
+model=dense tp=1 ep=False mode=eager devices=[0] n=4
+  ttft_ms=25.95  decode_tok/s=49.27  e2e_tok/s=46.06
+model=moe tp=2 ep=False mode=eager devices=[0, 1] n=64
+  ttft_ms=42.02  decode_tok/s=29.29  e2e_tok/s=29.18
+model=moe tp=2 ep=False mode=cg devices=[0, 1] n=64
+  ttft_ms=49.79  decode_tok/s=201.04  e2e_tok/s=176.23
+model=moe tp=2 ep=True mode=eager devices=[0, 1] n=64
+  ttft_ms=39.51  decode_tok/s=30.01  e2e_tok/s=29.92
+model=moe tp=2 ep=True mode=cg devices=[0, 1] n=64
+  ttft_ms=50.05  decode_tok/s=161.33  e2e_tok/s=145.27
+--- chain_v5 ---
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:  12%|█▎        | 1/8 [00:18<02:07, 18.21s/it]Loading weights:  12%|█▎        | 1/8 [00:18<02:06, 18.10s/it]Loading weights:  25%|██▌       | 2/8 [00:38<01:56, 19.39s/it]Loading weights:  25%|██▌       | 2/8 [00:39<01:58, 19.75s/it]Loading weights:  38%|███▊      | 3/8 [00:54<01:30, 18.08s/it]Loading weights:  38%|███▊      | 3/8 [00:55<01:31, 18.21s/it]Loading weights:  50%|█████     | 4/8 [01:06<01:01, 15.32s/it]Loading weights:  50%|█████     | 4/8 [01:06<01:02, 15.53s/it]Loading weights:  62%|██████▎   | 5/8 [01:17<00:40, 13.60s/it]Loading weights:  62%|██████▎   | 5/8 [01:17<00:41, 13.80s/it]Loading weights:  75%|███████▌  | 6/8 [01:34<00:29, 14.92s/it]Loading weights:  75%|███████▌  | 6/8 [01:34<00:29, 14.99s/it]Loading weights:  88%|████████▊ | 7/8 [01:55<00:16, 16.86s/it]Loading weights:  88%|████████▊ | 7/8 [01:55<00:16, 16.98s/it]Loading weights: 100%|██████████| 8/8 [01:55<00:00, 11.70s/it]Loading weights: 100%|██████████| 8/8 [01:55<00:00, 14.48s/it]
+Loading weights: 100%|██████████| 8/8 [01:56<00:00, 11.74s/it]Loading weights: 100%|██████████| 8/8 [01:56<00:00, 14.53s/it]
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+[rank0]:W0927 01:10:36.387000 30005 site-packages/torch/utils/cpp_extension.py:2425] TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+[rank0]:W0927 01:10:36.387000 30005 site-packages/torch/utils/cpp_extension.py:2425] If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'] to specific architectures.

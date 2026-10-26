@@ -361,7 +361,9 @@ python bench/zos_matrix.py --case short --n 8 --max-tokens 32 --blocks 48
 python bench/spec_sweep.py --k 1,2,4              # 投机加速比扫描
 ```
 
-每个数字的口径、噪声处理、为什么本机量不出加速，见 [docs/05-基准与复现](docs/05-基准与复现.md)。
+每个数字的口径、噪声处理、为什么本机量不出加速，见 [docs/05-基准与复现](docs/05-基准与复现.md)；
+**2×4090D 上的全套实测**（并行矩阵 / MoE / 8B / 量化 / 投机 K 曲线，含原始日志与溯源）见
+[docs/07-实测汇总-4090D](docs/07-实测汇总-4090D.md)。
 
 ---
 
