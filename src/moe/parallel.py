@@ -42,7 +42,7 @@ MoeBackend = Literal["cutlass", "triton"]
 MoeBackendPrefer = Literal["auto", "cutlass", "triton"]
 
 # 【哪些 SM 才有 FlashInfer 的 cutlass 版 fused MoE】
-#     89  = RTX 4090 / 4090D 这一代（sm_89）
+#     89  = RTX 4090 / 4090D 这一代（项目实测用的两张 4090D）
 #     90  = A100 / H100
 #     100 = B200；120 / 121 = 新架构一代
 # 不在名单里的架构（例如 SM 86 的 RTX 3090）只能用 Triton 后端，没有例外。
