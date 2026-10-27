@@ -101,13 +101,17 @@ outputs = self.scheduler.finish(prev, p_ids, d_ids)
 | 跨进程 | `src/control/executor.py:169`、`:321`、`:489`、`:521` | `(n_p, n_d, slot)` 透传 |
 | 广播 | `src/compute/worker.py` `_broadcast_prev_samples` | PP 下采样 rank 把 `sample_dev` 广播给全组 |
 
-## 6. 与投机的冲突
+## 6. 与投机的冲突（摘要）
 
-投机解码下一步的起点是**区间**（接受长度 `j` 由 GPU 验证后才产生），而 ZOS 要求 CPU 提前把位置算死；同时 n-gram 草稿在 CPU 上要读 `seq.token_ids`。
+ZOS 把未知量压到"一个 token id"，投机把它放大成"一个长度 `j`"：下一步的 `pos` / `csl` / `slot`
+全由 `num_cached_tokens` 推出来，而它只推进 `j+1` —— 位置是标量，不能像 KV 块那样"最坏预留"。
 
-所以两者互斥：`src/control/core.py:90` 处 `want_zos and config.num_speculative_tokens == 0`，否则打印一行原因并退回同步路径。
+所以两者互斥：`src/control/core.py:93` 的 `want_zos and config.num_speculative_tokens == 0`，
+否则打印一行原因并退回同步路径。另有第二个阻碍点：n-gram 的 `propose()` 在 CPU 上读 `seq.token_ids`，
+ZOS 下这个锚点正好还留在显存里。
 
-想同时开的话需要把两件事搬上 GPU：坐标修正（接受长度参与位置计算）与草稿生成（n-gram 表或 MTP 头）。DeepInfer 的做法是后者依赖 nextn 头在 GPU 上产草稿，前者用 `compute_seqlens_k_zos` 在设备端修正 —— 成本大于本项目的收益，故不做。
+**完整分析**（两条冲突的机制、为什么"最坏预留"救不了 position、A/B/C 三条出路各要付多少、
+为什么不做 B 的收益算术、面试六问）见 [06-ZOS与投机](06-ZOS与投机.md)。
 
 ## 7. 怎么验证（三层证据）
 

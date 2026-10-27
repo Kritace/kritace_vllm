@@ -9,6 +9,7 @@
 | CUDA Graph / torch.compile | `src/compute/cuda_graph.py`、`src/compute/model_runner.py` | [01](docs/01-架构总览.md) |
 | MoE / TP / PP / DP / EP | `src/moe/`、`src/distributed/` | [04](docs/04-MoE与并行.md) |
 | 投机解码（n-gram / 小模型） | `src/spec/` | [03](docs/03-投机解码.md) |
+| ZOS × 投机为什么互斥 | `src/control/core.py`、`src/control/scheduler.py` | [06](docs/06-ZOS与投机.md) |
 | **零开销调度 ZOS** | `src/control/core.py:173` | **[02](docs/02-ZOS.md)** |
 
 ---
