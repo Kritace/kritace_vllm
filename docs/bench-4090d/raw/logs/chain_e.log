@@ -1,0 +1,12 @@
+队列已空 2026-09-27T02:13:10+08:00
+########## E  cutlass / tp2 eager（补跑）##########
+Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:  12%|█▎        | 1/8 [00:16<01:58, 16.90s/it]Loading weights:  12%|█▎        | 1/8 [00:16<01:57, 16.81s/it]Loading weights:  25%|██▌       | 2/8 [00:24<01:08, 11.38s/it]Loading weights:  25%|██▌       | 2/8 [00:27<01:17, 12.90s/it]Loading weights:  38%|███▊      | 3/8 [00:40<01:07, 13.45s/it]Loading weights:  38%|███▊      | 3/8 [00:40<01:06, 13.31s/it]Loading weights:  50%|█████     | 4/8 [01:02<01:06, 16.54s/it]Loading weights:  50%|█████     | 4/8 [01:02<01:07, 16.86s/it]Loading weights:  62%|██████▎   | 5/8 [01:11<00:42, 14.24s/it]Loading weights:  62%|██████▎   | 5/8 [01:12<00:42, 14.27s/it]Loading weights:  75%|███████▌  | 6/8 [01:24<00:27, 13.52s/it]Loading weights:  75%|███████▌  | 6/8 [01:24<00:27, 13.55s/it]Loading weights:  88%|████████▊ | 7/8 [01:39<00:14, 14.20s/it]Loading weights: 100%|██████████| 8/8 [01:40<00:00,  9.89s/it]Loading weights: 100%|██████████| 8/8 [01:40<00:00, 12.55s/it]
+Loading weights:  88%|████████▊ | 7/8 [01:40<00:14, 14.36s/it]Loading weights: 100%|██████████| 8/8 [01:40<00:00,  9.85s/it]Loading weights: 100%|██████████| 8/8 [01:40<00:00, 12.61s/it]
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+2026-09-27 02:15:16,450 - INFO - core.py:564 - flashinfer.jit: Building JIT module fused_moe_89; this can take several minutes on first use.
+2026-09-27 02:20:39,671 - INFO - core.py:564 - flashinfer.jit: Building JIT module fused_moe_89; this can take several minutes on first use.
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+===== E DONE 2026-09-27T02:43:11+08:00 =====

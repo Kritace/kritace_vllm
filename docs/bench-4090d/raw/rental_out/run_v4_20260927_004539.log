@@ -1,0 +1,116 @@
+=== date ===
+2026-09-27T00:45:39+08:00
+=== gpu ===
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+=== topology ===
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+=== torch ===
+2.8.0+cu128 12.8
+=== flash_attn ===
+2.8.3
+=== flashinfer ===
+0.7.0
+=== arch_list ===
+8.9
+suite=smoke cases=6 gpus=2
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 1 --dp 1 --tag 0.6b-single-eager
+=== 0.6b-single-eager: tp=1 pp=1 dp=1 mode=eager gpus>=1 ===
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.41it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.40it/s]
+2026-09-27 00:46:01,492 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+2026-09-27 00:46:38,930 - INFO - core.py:564 - flashinfer.jit: Building JIT module silu_and_mul; this can take several minutes on first use.
+0.6b-single-eager | ttft=25.80ms | decode=50.0 | batch8=348.5
+NCCL version 2.27.3+cuda12.9
+<<< 0.6b-single-eager rc=0 in 63.2s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 1 --dp 1 --tag 0.6b-single-cg --cg
+=== 0.6b-single-cg: tp=1 pp=1 dp=1 mode=cg gpus>=1 ===
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.72it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.71it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+0.6b-single-cg | ttft=25.93ms | decode=455.9 | batch8=2692.1
+NCCL version 2.27.3+cuda12.9
+<<< 0.6b-single-cg rc=0 in 12.2s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 2 --pp 1 --dp 1 --tag 0.6b-tp2-eager
+=== 0.6b-tp2-eager: tp=2 pp=1 dp=1 mode=eager gpus>=2 ===
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.91s/it]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.91s/it]
+Loading weights: 100%|██████████| 1/1 [00:00<00:00,  1.24it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  1.24it/s]
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+FAIL 0.6b-tp2-eager: AttributeError: module 'torch.distributed' has no attribute 'all_gather_single'
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/dzyy-vllm/vllm-v4/src/control/executor.py", line 148, in _spawn_worker
+    worker_loop(worker)
+  File "/root/dzyy-vllm/vllm-v4/src/control/executor.py", line 186, in worker_loop
+    counts = worker.execute_model(cmd.sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/worker.py", line 193, in execute_model
+    result = self.model_runner.run_forward(sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 120, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 132, in run_forward
+    p = self._run_prefill(sched.prefills) if sched.prefills else None
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 262, in _run_prefill
+    return self._sample_logits(hidden[last], bs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 266, in _sample_logits
+    ids = self.model.argmax(hidden)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 238, in argmax
+    return self.lm_head.argmax(hidden_states)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/layers/vocab_parallel.py", line 204, in argmax
+    vals = tensor_model_parallel_all_gather(vals, dim=-1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/distributed/communication_op.py", line 85, in tensor_model_parallel_all_gather
+    return all_gather(input, dim=dim, group=get_tp_group())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/distributed/communication_op.py", line 36, in all_gather
+    dist.all_gather_single(out, src, group=group.device_group)
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'torch.distributed' has no attribute 'all_gather_single'. Did you mean: '_all_gather_base'?
+<<< 0.6b-tp2-eager rc=-9 in 43.8s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 2 --pp 1 --dp 1 --tag 0.6b-tp2-cg --cg
+=== 0.6b-tp2-cg: tp=2 pp=1 dp=1 mode=cg gpus>=2 ===
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:09<00:00,  9.99s/it]Loading weights: 100%|██████████| 1/1 [00:09<00:00, 10.00s/it]
+Loading weights: 100%|██████████| 1/1 [00:11<00:00, 11.81s/it]Loading weights: 100%|██████████| 1/1 [00:11<00:00, 11.81s/it]
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+FAIL 0.6b-tp2-cg: AttributeError: module 'torch.distributed' has no attribute 'all_gather_single'

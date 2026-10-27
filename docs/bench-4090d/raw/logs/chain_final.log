@@ -1,0 +1,66 @@
+########## 1. K=0 基线 ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.59it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.58it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=0 steps=48 tokens=116 完成
+NCCL version 2.27.3+cuda12.9
+
+########## 2. K=5 投机（带形状诊断）##########
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+[spec] 形状不匹配: len(flat_ids)=1 len(seqs)=1 width=6 期望=6
+[spec] seg 越界: j=1 len(seg)=1 width=6 len(draft)=5 len(flat_ids)=1
+  k=5 steps=49 tokens=116 完成
+NCCL version 2.27.3+cuda12.9
+
+########## 3. 判定 ##########
+  K=0 : steps=  48 tokens=116
+  K=5 : steps=  49 tokens=116
+  首个不一致位置: 116
+  token 完全一致: True
+  PASS 步数加速比 = 0.98x
+
+########## 4. n-gram 接受率 ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.38it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.37it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+prompt          K     命中步     无草稿       α  E[token]
+--------------------------------------------------------
+[repeat-block] prompt=97 gen=256
+repeat-block    1     128       0   1.000      2.00
+repeat-block    2      85       0   1.000      3.00
+repeat-block    4      51       0   1.000      5.00
+repeat-block    6      37       0   0.991      6.81
+repeat-block    8      29       0   0.983      8.40
+
+[code-like] prompt=36 gen=256
+code-like       1     127      20   0.858      1.86
+code-like       2      88      20   0.841      2.55
+code-like       4      64      20   0.668      2.61
+code-like       6      55      20   0.552      2.20
+code-like       8      41      20   0.598      2.46
+
+[prose] prompt=62 gen=256
+prose           1     121      19   0.950      1.95
+prose           2      82      19   0.939      2.82
+prose           4      52      19   0.894      4.05
+prose           6      40      19   0.825      4.23
+prose           8      31      19   0.835      4.86
+
+DONE
+NCCL version 2.27.3+cuda12.9
+===== FINAL DONE 2026-09-27T02:49:02+08:00 =====

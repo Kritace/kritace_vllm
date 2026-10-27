@@ -1,0 +1,91 @@
+[sched] seq=1 L=57 cached=56 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=58 cached=57 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=59 cached=58 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=60 cached=59 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=61 cached=60 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=62 cached=61 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=63 cached=62 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=64 cached=63 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=65 cached=64 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=66 cached=65 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=67 cached=66 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=68 cached=67 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=69 cached=68 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=70 cached=69 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=71 cached=70 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=72 cached=71 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=73 cached=72 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=74 cached=73 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=75 cached=74 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=76 cached=75 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=77 cached=76 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=78 cached=77 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=79 cached=78 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=80 cached=79 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=81 cached=80 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=82 cached=81 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=83 cached=82 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=84 cached=83 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=85 cached=84 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=86 cached=85 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=87 cached=86 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=88 cached=87 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=89 cached=88 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=90 cached=89 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=91 cached=90 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=92 cached=91 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=93 cached=92 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=94 cached=93 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=95 cached=94 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=96 cached=95 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=97 cached=96 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=98 cached=97 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=99 cached=98 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=100 cached=99 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=101 cached=100 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=102 cached=101 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=103 cached=102 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=104 cached=103 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=105 cached=104 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=106 cached=105 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=107 cached=106 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=108 cached=107 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=109 cached=108 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=110 cached=109 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=111 cached=110 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=112 cached=111 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=113 cached=112 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=114 cached=113 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=115 cached=114 blocks=1 draft=[] n_new=1
+
+  ================= U 真实草稿 =================
+    [spec-dbg] seq=2 tokens=[2070, 315, 6366, 8038]
+    [spec-dbg]   row0: 315@(+21.875)  304@(+16.750)  369@(+16.250)
+    [spec-dbg]   row1: 20443@(+19.125)  1995@(+16.250)  15235@(+15.812)
+    [spec-dbg]   row2: 8038@(+19.750)  11129@(+17.500)  14155@(+17.000)
+    [spec-dbg]   row3: 13@(+19.750)  11@(+19.625)  323@(+19.500)
+    [spec] seq=2 L=95 cached=94 sched=4 width=4 draft=[315, 6366, 8038] seg=[315, 20443, 8038, 13] j=1 emitted=[315, 20443]
+    [wire] seq=2 status=SequenceStatus.RUNNING tokens=97 prompt=56 cached=96 blocks=1 scheduled=4 draft=[11229, 13, 576]
+    [spec-dbg] bs=1 width=4 cu_q=[0, 4] cu_k=[0, 100] pos=[96, 97, 98, 99] slots=[96, 97, 98, 99] cache_seqlens=[96]
+    [spec-dbg] seq=2 tokens=[20443, 11229, 13, 576]
+    [spec-dbg]   row0: 11229@(+24.500)  323@(+17.125)  2272@(+16.625)
+    [spec-dbg]   row1: 13@(+20.250)  11@(+20.250)  323@(+19.375)
+    [spec-dbg]   row2: 576@(+16.375)  758@(+15.750)  58194@(+15.562)
+    [spec-dbg]   row3: 2070@(+18.000)  4647@(+16.375)  1887@(+16.250)
+    该次运行的生成段前 12 个 = [304, 279, 2070, 315, 6366, 8038, 13, 576, 2070, 702, 14700, 18512]
+
+  ================= R 真值草稿 =================
+    [spec-dbg] seq=3 tokens=[315, 279, 2070, 315]
+    [spec-dbg]   row0: 279@(+19.375)  8232@(+16.500)  1008@(+16.500)
+    [spec-dbg]   row1: 2070@(+18.375)  1995@(+17.500)  3738@(+16.875)
+    [spec-dbg]   row2: 315@(+21.750)  304@(+16.750)  369@(+16.250)
+    [spec-dbg]   row3: 20443@(+19.125)  1995@(+16.375)  15235@(+15.875)
+    [spec] seq=3 L=93 cached=92 sched=4 width=4 draft=[279, 2070, 315] seg=[279, 2070, 315, 20443] j=3 emitted=[279, 2070, 315, 20443]
+    [wire] seq=3 status=SequenceStatus.RUNNING tokens=97 prompt=56 cached=96 blocks=1 scheduled=4 draft=[11229, 13, 576]
+    [spec-dbg] bs=1 width=4 cu_q=[0, 4] cu_k=[0, 100] pos=[96, 97, 98, 99] slots=[96, 97, 98, 99] cache_seqlens=[96]
+    [spec-dbg] seq=3 tokens=[20443, 11229, 13, 576]
+    [spec-dbg]   row0: 11229@(+24.500)  323@(+17.250)  2272@(+16.625)
+    [spec-dbg]   row1: 13@(+20.250)  11@(+20.125)  323@(+19.375)
+    [spec-dbg]   row2: 576@(+16.375)  758@(+15.750)  58194@(+15.562)
+    [spec-dbg]   row3: 2070@(+18.125)  4647@(+16.500)  1887@(+16.250)
+    该次运行的生成段前 12 个 = [304, 279, 2070, 315, 6366, 8038, 13, 576, 2070, 702, 14700, 18512]

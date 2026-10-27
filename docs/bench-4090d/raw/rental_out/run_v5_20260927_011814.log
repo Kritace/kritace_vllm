@@ -1,0 +1,32 @@
+=== date ===
+2026-09-27T01:18:14+08:00
+=== gpu ===
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB
+=== topology ===
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+=== model ===
+MOE /root/huggingface/Qwen1.5-MoE-A2.7B exists= True
+DENSE /root/huggingface/Qwen3-0.6B exists= True
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]

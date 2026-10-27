@@ -1,0 +1,47 @@
+########## ① v6 验收：K=0 vs K=5 ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.39it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.38it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=0 steps=48 tokens=116 完成
+NCCL version 2.27.3+cuda12.9
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.57it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.57it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=5 steps=24 tokens=116 完成
+NCCL version 2.27.3+cuda12.9
+  K=0 steps=48  K=5 steps=24
+  token 完全一致: False
+  FAIL 首个不一致: 70
+
+########## ② 官方 vLLM：量化 + 投机对照 ##########
+
+--- 8b-vllm-bf16-cg ---
+8b-vllm-bf16-cg | ttft=27.31ms | decode=59.3 | batch8=407.5
+INFO 09-27 02:53:10 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=63860) INFO 09-27 02:53:10 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=63860) INFO 09-27 02:53:10 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=63860) INFO 09-27 02:53:10 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=63860) INFO 09-27 02:53:10 [core.py:1355] [shutdown] EngineCore: exiting busy loop
+
+--- 8b-vllm-awq-cg ---
+8b-vllm-awq-cg | ttft=26.04ms | decode=156.0 | batch8=930.7
+INFO 09-27 02:54:35 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=65033) INFO 09-27 02:54:35 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=65033) INFO 09-27 02:54:35 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=65033) INFO 09-27 02:54:35 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=65033) INFO 09-27 02:54:35 [core.py:1355] [shutdown] EngineCore: exiting busy loop
+
+--- 8b-vllm-spec-real ---
+(EngineCore pid=65687)     _check_enough_kv_cache_memory(
+(EngineCore pid=65687)   File "/root/venvs/vllm-official/lib/python3.12/site-packages/vllm/v1/core/kv_cache_utils.py", line 899, in _check_enough_kv_cache_memory
+(EngineCore pid=65687)     raise ValueError(
+(EngineCore pid=65687) ValueError: To serve at least one request with the model's max seq len (4096), (1.0 GiB KV cache is needed, which is larger than the available KV cache memory (0.58 GiB). Based on the available memory, the estimated maximum model length is 2368. Try increasing `gpu_memory_utilization` (which also controls CPU memory on the CPU backend) or decreasing `max_model_len` when initializing the engine. See https://docs.vllm.ai/en/latest/configuration/conserving_memory/ for more details.
+INFO 09-27 02:56:33 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+FAIL 8b-vllm-spec-real: RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+
+--- 8b-vllm-spec-dummy ---
+8b-vllm-spec-dummy | ttft=69.47ms | decode=127.4 | batch8=245.1
+INFO 09-27 02:59:31 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=66696) INFO 09-27 02:59:31 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=66696) INFO 09-27 02:59:31 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=66696) INFO 09-27 02:59:31 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=66696) INFO 09-27 02:59:31 [core.py:1355] [shutdown] EngineCore: exiting busy loop
+===== P DONE 2026-09-27T02:59:33+08:00 =====

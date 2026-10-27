@@ -40,3 +40,6 @@ bench_out/
 .DS_Store
 Thumbs.db
 docs/06-面试串讲攻略.md
+
+# 实测原始记录（日志虽以 .log 结尾，但它们是证据，要进仓库）
+!docs/bench-4090d/raw/**/*.log

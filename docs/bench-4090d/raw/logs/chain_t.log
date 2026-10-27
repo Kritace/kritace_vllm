@@ -1,0 +1,4 @@
+[spec] seq=1 L=69 cached=68 sched=3 draft=[100916, 106980] seg=[100916, 0, 0] j=1 flat=[100916, 0, 0, 0, 0, 0, 0, 0]
+[spec] seq=1 L=73 cached=72 sched=3 draft=[100916, 0] seg=[100916, 0, 0] j=2 flat=[100916, 0, 0, 0, 0, 0, 0, 0]
+  k=2 prompt=68 steps=5
+===== T DONE 2026-09-27T03:07:28+08:00 =====

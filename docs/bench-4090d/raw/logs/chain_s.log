@@ -1,0 +1,48 @@
+########## ① 官方 vLLM 投机（真实文本）##########
+Rendering prompts:   0%|          | 0/1 [00:00<?, ?it/s]Rendering prompts: 100%|██████████| 1/1 [00:00<00:00, 1093.12it/s]
+Processed prompts:   0%|          | 0/1 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts: 100%|██████████| 1/1 [00:01<00:00,  1.06s/it, est. speed input: 241.14 toks/s, output: 120.56 toks/s]Processed prompts: 100%|██████████| 1/1 [00:01<00:00,  1.06s/it, est. speed input: 241.14 toks/s, output: 120.56 toks/s]Processed prompts: 100%|██████████| 1/1 [00:01<00:00,  1.06s/it, est. speed input: 241.14 toks/s, output: 120.56 toks/s]
+Rendering prompts:   0%|          | 0/8 [00:00<?, ?it/s]Rendering prompts: 100%|██████████| 8/8 [00:00<00:00, 1596.08it/s]
+Processed prompts:   0%|          | 0/8 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts:  12%|█▎        | 1/8 [00:01<00:11,  1.67s/it, est. speed input: 153.17 toks/s, output: 76.58 toks/s]Processed prompts: 100%|██████████| 8/8 [00:01<00:00,  1.67s/it, est. speed input: 1164.78 toks/s, output: 582.38 toks/s]Processed prompts: 100%|██████████| 8/8 [00:01<00:00,  4.55it/s, est. speed input: 1164.78 toks/s, output: 582.38 toks/s]
+8b-vllm-spec-real | ttft=73.27ms | decode=128.1 | batch8=580.2
+INFO 09-27 03:06:08 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=71067) INFO 09-27 03:06:08 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=71067) INFO 09-27 03:06:08 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=71067) INFO 09-27 03:06:08 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=71067) INFO 09-27 03:06:08 [core.py:1355] [shutdown] EngineCore: exiting busy loop
+
+########## ② v6 逐步对比：K=0 ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.81it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.80it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=0 prompt=68 steps=16
+NCCL version 2.27.3+cuda12.9
+
+########## ③ v6 逐步对比：K=5 ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.39it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.39it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=5 prompt=68 steps=10
+NCCL version 2.27.3+cuda12.9
+
+########## ④ 逐步差异分析 ##########
+  prompt_len=68  基线步数=16  投机步数=10
+  生成序列一致: False
+  首个不同位置(生成段): 2
+
+  前 10 步逐步对比:
+    i         基线产出                         草稿  j                 投机产出   一致
+    0     [100043]                         []  0             [100043]   OK
+    1     [100916]                         []  1          [100916, 0] DIFF
+    2     [106980]                         []  1                [220] DIFF
+    3     [101142]                         []  1             [100043] DIFF
+    4     [116913]                         []  2       [100916, 0, 0] DIFF
+    5      [99270]                         []  0                [220] DIFF
+    6     [110954]                         []  1          [100043, 0] DIFF
+    7     [100536]                         []  1             [220, 0] DIFF
+    8     [118696]                         []  2          [220, 0, 0] DIFF
+    9     [119090]                         []  1                   [] DIFF
+   10     [100043]                         []  0                   [] DIFF
+   11     [100916]                         []  0                   [] DIFF
+   12     [106980]                         []  0                   [] DIFF
+   13     [101142]                         []  0                   [] DIFF
+   14     [116913]                         []  0                   [] DIFF
+   15      [99270]                         []  0                   [] DIFF
+===== S DONE 2026-09-27T03:06:44+08:00 =====

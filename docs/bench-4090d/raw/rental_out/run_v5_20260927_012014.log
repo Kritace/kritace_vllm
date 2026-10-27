@@ -1,0 +1,85 @@
+=== date ===
+2026-09-27T01:20:14+08:00
+=== gpu ===
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB
+=== topology ===
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+=== model ===
+MOE /root/huggingface/Qwen1.5-MoE-A2.7B exists= True
+DENSE /root/huggingface/Qwen3-0.6B exists= True
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.45it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.44it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+model=dense tp=1 ep=False mode=eager devices=[0] n=4
+  ttft_ms=25.51  decode_tok/s=50.08  e2e_tok/s=46.83
+  tokens=[12095, 13, 576, 6722]
+NCCL version 2.27.3+cuda12.9
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:  12%|█▎        | 1/8 [00:06<00:44,  6.39s/it]Loading weights:  12%|█▎        | 1/8 [00:07<00:52,  7.47s/it]Loading weights:  25%|██▌       | 2/8 [00:16<00:51,  8.66s/it]Loading weights:  25%|██▌       | 2/8 [00:20<01:04, 10.81s/it]Loading weights:  38%|███▊      | 3/8 [00:33<01:00, 12.08s/it]Loading weights:  38%|███▊      | 3/8 [00:33<01:01, 12.39s/it]Loading weights:  50%|█████     | 4/8 [00:40<00:40, 10.08s/it]Loading weights:  62%|██████▎   | 5/8 [00:49<00:28,  9.54s/it]Loading weights:  50%|█████     | 4/8 [00:49<00:55, 13.78s/it]Loading weights:  75%|███████▌  | 6/8 [00:56<00:17,  8.85s/it]Loading weights:  62%|██████▎   | 5/8 [01:03<00:41, 13.70s/it]Loading weights:  88%|████████▊ | 7/8 [01:08<00:09,  9.68s/it]Loading weights: 100%|██████████| 8/8 [01:08<00:00,  6.79s/it]Loading weights: 100%|██████████| 8/8 [01:08<00:00,  8.62s/it]
+Loading weights:  75%|███████▌  | 6/8 [01:09<00:22, 11.12s/it]Loading weights:  88%|████████▊ | 7/8 [01:10<00:07,  7.84s/it]Loading weights: 100%|██████████| 8/8 [01:10<00:00,  5.39s/it]Loading weights: 100%|██████████| 8/8 [01:10<00:00,  8.83s/it]
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/dzyy-vllm/vllm-v5/src/control/executor.py", line 148, in _spawn_worker
+    worker_loop(worker)
+  File "/root/dzyy-vllm/vllm-v5/src/control/executor.py", line 186, in worker_loop
+    counts = worker.execute_model(cmd.sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/worker.py", line 211, in execute_model
+    result = self.model_runner.run_forward(sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 120, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/model_runner.py", line 132, in run_forward
+    p = self._run_prefill(sched.prefills) if sched.prefills else None
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/model_runner.py", line 262, in _run_prefill
+    return self._sample_logits(hidden[last], bs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/model_runner.py", line 266, in _sample_logits
+    ids = self.model.argmax(hidden)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/models/qwen3.py", line 245, in argmax
+    return self.lm_head.argmax(hidden_states)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/compute/layers/vocab_parallel.py", line 204, in argmax
+    vals = tensor_model_parallel_all_gather(vals, dim=-1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/distributed/communication_op.py", line 85, in tensor_model_parallel_all_gather
+    return all_gather(input, dim=dim, group=get_tp_group())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/distributed/communication_op.py", line 36, in all_gather
+    dist.all_gather_single(out, src, group=group.device_group)
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'torch.distributed' has no attribute 'all_gather_single'. Did you mean: '_all_gather_base'?

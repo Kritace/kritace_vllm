@@ -1,0 +1,43 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.94it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.93it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  重复(问答模板)         K=0  decode=   48.7 tok/s  e2e=1.32s  ttft=27.8ms  
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.40it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.40it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  重复(问答模板)         K=3  decode=  151.3 tok/s  e2e=0.44s  ttft=25.0ms  一致
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.48it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.47it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  重复(问答模板)         K=5  decode=  182.6 tok/s  e2e=0.37s  ttft=24.9ms  一致
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.65it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.65it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  重复(问答模板)         K=8  decode=  285.9 tok/s  e2e=0.25s  ttft=26.1ms  一致
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.70it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.69it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  散文(维基风)          K=0  decode=   49.9 tok/s  e2e=1.29s  ttft=25.4ms  
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.19it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.19it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  散文(维基风)          K=3  decode=   74.5 tok/s  e2e=0.87s  ttft=25.3ms  ★不一致★
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.70it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.69it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  散文(维基风)          K=5  decode=   82.1 tok/s  e2e=0.79s  ttft=25.3ms  ★不一致★
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.61it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.60it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  散文(维基风)          K=8  decode=   87.6 tok/s  e2e=0.75s  ttft=27.0ms  ★不一致★
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.43it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.43it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  代码(Python)       K=0  decode=   50.4 tok/s  e2e=1.27s  ttft=25.5ms  
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.63it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.62it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  代码(Python)       K=3  decode=   58.8 tok/s  e2e=1.10s  ttft=25.5ms  一致
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.53it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.53it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  代码(Python)       K=5  decode=   58.4 tok/s  e2e=1.11s  ttft=27.1ms  一致
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.30it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.29it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  代码(Python)       K=8  decode=   58.6 tok/s  e2e=1.10s  ttft=25.3ms  一致
+
+=== 汇总：decode 吞吐加速比（相对各自 K=0）===
+  重复(问答模板)          K=0:  1.00x  K=3:  3.10x  K=5:  3.75x  K=8:  5.87x
+  散文(维基风)           K=0:  1.00x  K=3:  1.49x  K=5:  1.64x  K=8:  1.75x
+  代码(Python)        K=0:  1.00x  K=3:  1.17x  K=5:  1.16x  K=8:  1.16x
+NCCL version 2.27.3+cuda12.9

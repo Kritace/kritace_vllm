@@ -1,0 +1,105 @@
+===== probe_server 开始 2026-09-27T00:37:59+08:00 =====
+本机: NVIDIA GeForce RTX 4090 D 等 2 张卡
+============================================================================
+  1) 硬件清单
+============================================================================
+  cuda:0  NVIDIA GeForce RTX 4090 D        8.9     23.5 GiB
+  cuda:1  NVIDIA GeForce RTX 4090 D        8.9     23.5 GiB
+  卡间 P2P 支持（can_device_access_peer）：
+   g0 g1
+  g0    X NS 
+   g0 g1
+  g1  NS   X 
+  提示：P2P=OK 表示卡间直连 DMA 可用（配合 nvidia-smi topo -m 看是 NVLink 还是 PCIe）
+
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+============================================================================
+  2) NCCL all-reduce 延迟曲线（TP 每层 o_proj/down_proj 各一次 AR）
+============================================================================
+        消息大小 |    延迟(us) |       有效带宽
+  --------------------------------------------
+         2 KB |     81.4 |      24.0 MB/s
+         8 KB |     60.0 |     130.3 MB/s
+        32 KB |     59.9 |     521.4 MB/s
+       128 KB |     59.3 |    2108.3 MB/s
+       512 KB |     87.0 |    5747.2 MB/s
+      2048 KB |    292.4 |    6840.3 MB/s
+============================================================================
+  3) decode 步通信估算与 TP 判语
+============================================================================
+  目标模型假设 hidden=1024, layers=28, batch=1
+  每层 AR 消息 ≈ 8 KB（o_proj + down_proj 各一次）
+  每 decode 步总通信量 ≈ 224 KB
+  以 8KB 消息的实测延迟 60.0us 折算：
+  每步通信串行耗时 ≈ 1.68 ms
+
+  判语：
+   ⚠️  1.68ms 通信可观，TP 只在大模型/强卡（单层计算 > 1ms）下有利
+   经验法则：只有当「每层单卡计算时间 > 该层 AR 通信时间」时 TP 才划算
+
+
+===== bench_bandwidth 开始 2026-09-27T00:38:18+08:00 =====
+本机: NVIDIA GeForce RTX 4090 D 等可见卡
+  cuda:0  NVIDIA GeForce RTX 4090 D        23.5 GiB
+  cuda:1  NVIDIA GeForce RTX 4090 D        23.5 GiB
+
+==============================================================================
+  [1] 点对点 P2P 裸传输  g0 -> g1
+==============================================================================
+  can_device_access_peer = NS
+        消息大小 |       带宽(单向) |         延迟
+  ----------------------------------------
+         4 B |            - |     30.7 us
+         2 KB |    0.06 GB/s |          -
+         4 KB |    0.12 GB/s |          -
+         8 KB |    0.24 GB/s |          -
+        16 KB |    0.48 GB/s |          -
+        32 KB |    0.95 GB/s |          -
+        64 KB |    1.63 GB/s |          -
+       128 KB |    2.74 GB/s |          -
+       256 KB |    5.35 GB/s |          -
+       512 KB |    6.26 GB/s |          -
+      1024 KB |    8.19 GB/s |          -
+      2048 KB |   11.89 GB/s |          -
+      4096 KB |   13.52 GB/s |          -
+      8192 KB |   14.98 GB/s |          -
+     16384 KB |   16.00 GB/s |          -
+     32768 KB |   16.44 GB/s |          -
+     65536 KB |   16.73 GB/s |          -
+
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+==============================================================================
+  [2] NCCL all-reduce（world=2，busbw = algbw * 2(n-1)/n）
+==============================================================================
+        消息大小 |        时间 |      algbw |      busbw
+  ----------------------------------------------
+         2 KB |   164.3 us |    0.01 GB/s |    0.01 GB/s
+         4 KB |   118.8 us |    0.03 GB/s |    0.03 GB/s
+         8 KB |   107.0 us |    0.07 GB/s |    0.07 GB/s
+        16 KB |    82.9 us |    0.18 GB/s |    0.18 GB/s
+        32 KB |    76.8 us |    0.40 GB/s |    0.40 GB/s
+        64 KB |    57.9 us |    1.05 GB/s |    1.05 GB/s
+       128 KB |    62.0 us |    1.97 GB/s |    1.97 GB/s
+       256 KB |    77.8 us |    3.14 GB/s |    3.14 GB/s
+       512 KB |   111.6 us |    4.38 GB/s |    4.38 GB/s
+      1024 KB |   179.7 us |    5.43 GB/s |    5.43 GB/s
+      2048 KB |   317.5 us |    6.15 GB/s |    6.15 GB/s
+      4096 KB |   604.7 us |    6.46 GB/s |    6.46 GB/s
+      8192 KB |  1163.8 us |    6.71 GB/s |    6.71 GB/s
+     16384 KB |  2285.6 us |    6.84 GB/s |    6.84 GB/s
+     32768 KB |  4490.8 us |    6.96 GB/s |    6.96 GB/s
+     65536 KB |  8745.0 us |    7.15 GB/s |    7.15 GB/s
+==============================================================================
+  [3] all-reduce busbw 摘要
+==============================================================================
+  busbw 峰值 ≈ 7.15 GB/s（消息 65536 KB）
+  解读：对比硬件标称用 busbw；PCIe 机常见饱和约数十 GB/s，NVLink 为数百 GB/s
+
+
+===== 全部结束 2026-09-27T00:38:30+08:00 =====

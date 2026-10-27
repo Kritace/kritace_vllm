@@ -1,0 +1,34 @@
+===== 等前置队列 =====
+队列已空 2026-09-27T02:10:09+08:00
+===== 等 8B 下载完 =====
+8B 大小: 16G
+
+########## F  single-eager ##########
+=== 8b-single-eager: tp=1 pp=1 dp=1 mode=eager gpus>=1 ===
+Loading weights:   0%|          | 0/5 [00:00<?, ?it/s]Loading weights:  20%|██        | 1/5 [00:00<00:03,  1.32it/s]Loading weights:  40%|████      | 2/5 [00:01<00:02,  1.09it/s]Loading weights:  60%|██████    | 3/5 [00:02<00:01,  1.05it/s]Loading weights:  80%|████████  | 4/5 [00:03<00:00,  1.07it/s]Loading weights: 100%|██████████| 5/5 [00:04<00:00,  1.35it/s]Loading weights: 100%|██████████| 5/5 [00:04<00:00,  1.22it/s]
+KV pool: 64 blocks × 256 tok (2.25 GiB)
+8b-single-eager | ttft=37.05ms | decode=36.0 | batch8=245.4
+NCCL version 2.27.3+cuda12.9
+
+########## F  single-cg ##########
+=== 8b-single-cg: tp=1 pp=1 dp=1 mode=cg gpus>=1 ===
+Loading weights:   0%|          | 0/5 [00:00<?, ?it/s]Loading weights:  20%|██        | 1/5 [00:00<00:02,  1.60it/s]Loading weights:  40%|████      | 2/5 [00:01<00:02,  1.27it/s]Loading weights:  60%|██████    | 3/5 [00:02<00:01,  1.21it/s]Loading weights:  80%|████████  | 4/5 [00:03<00:00,  1.27it/s]Loading weights: 100%|██████████| 5/5 [00:03<00:00,  1.64it/s]Loading weights: 100%|██████████| 5/5 [00:03<00:00,  1.46it/s]
+KV pool: 64 blocks × 256 tok (2.25 GiB)
+8b-single-cg | ttft=37.34ms | decode=58.1 | batch8=398.2
+NCCL version 2.27.3+cuda12.9
+
+########## F  tp2-eager ##########
+KV pool: 64 blocks × 256 tok (1.12 GiB)
+KV pool: 64 blocks × 256 tok (1.12 GiB)
+8b-tp2-eager | ttft=43.14ms | decode=27.8 | batch8=195.1
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## F  tp2-cg ##########
+KV pool: 64 blocks × 256 tok (1.12 GiB)
+KV pool: 64 blocks × 256 tok (1.12 GiB)
+8b-tp2-cg | ttft=49.44ms | decode=94.6 | batch8=556.8
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+===== F DONE 2026-09-27T02:12:55+08:00 =====

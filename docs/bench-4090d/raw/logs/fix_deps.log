@@ -1,0 +1,407 @@
+[1] 已暂停 MoE (pid 5089)，让出带宽
+Files removed: 166
+[2] 尝试镜像 https://pypi.tuna.tsinghua.edu.cn/simple
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[2] 安装成功（https://pypi.tuna.tsinghua.edu.cn/simple）
+[4] 已恢复 MoE
+[5] 验证 import
+  flash_attn 2.8.3
+  flashinfer 0.7.0
+  transformers 5.17.0
+  OK: v3/v4/v5 需要的算子 API 全部可用
+[6] 开始 v4 实测（只 0.6B）
+全部输出同时写入：/root/dzyy-vllm/rental/out/run_v4_20260927_004121.log
+
+[1;36m==> 0/6 机器指纹[0m
+=== date ===
+2026-09-27T00:41:21+08:00
+=== gpu ===
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+=== topology ===
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+=== torch ===
+2.8.0+cu128 12.8
+=== flash_attn ===
+2.8.3
+=== flashinfer ===
+0.7.0
+=== arch_list ===
+8.9
+
+[1;36m==> 1/6 拓扑探测 probe_server（回答：这台机器适不适合 TP）[0m
+本机: NVIDIA GeForce RTX 4090 D 等 2 张卡
+============================================================================
+  1) 硬件清单
+============================================================================
+  cuda:0  NVIDIA GeForce RTX 4090 D        8.9     23.5 GiB
+  cuda:1  NVIDIA GeForce RTX 4090 D        8.9     23.5 GiB
+  卡间 P2P 支持（can_device_access_peer）：
+   g0 g1
+  g0    X NS 
+   g0 g1
+  g1  NS   X 
+  提示：P2P=OK 表示卡间直连 DMA 可用（配合 nvidia-smi topo -m 看是 NVLink 还是 PCIe）
+
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+============================================================================
+  2) NCCL all-reduce 延迟曲线（TP 每层 o_proj/down_proj 各一次 AR）
+============================================================================
+        消息大小 |    延迟(us) |       有效带宽
+  --------------------------------------------
+         2 KB |     85.1 |      23.0 MB/s
+         8 KB |     76.7 |     101.9 MB/s
+        32 KB |     48.7 |     642.1 MB/s
+       128 KB |     39.1 |    3195.6 MB/s
+       512 KB |     87.9 |    5689.6 MB/s
+      2048 KB |    293.6 |    6812.2 MB/s
+============================================================================
+  3) decode 步通信估算与 TP 判语
+============================================================================
+  目标模型假设 hidden=1024, layers=28, batch=1
+  每层 AR 消息 ≈ 8 KB（o_proj + down_proj 各一次）
+  每 decode 步总通信量 ≈ 224 KB
+  以 8KB 消息的实测延迟 76.7us 折算：
+  每步通信串行耗时 ≈ 2.15 ms
+
+  判语：
+   ⚠️  2.15ms 通信可观，TP 只在大模型/强卡（单层计算 > 1ms）下有利
+   经验法则：只有当「每层单卡计算时间 > 该层 AR 通信时间」时 TP 才划算
+
+
+[1;36m==> 2/6 带宽曲线 bench_bandwidth[0m
+本机: NVIDIA GeForce RTX 4090 D 等可见卡
+  cuda:0  NVIDIA GeForce RTX 4090 D        23.5 GiB
+  cuda:1  NVIDIA GeForce RTX 4090 D        23.5 GiB
+
+==============================================================================
+  [1] 点对点 P2P 裸传输  g0 -> g1
+==============================================================================
+  can_device_access_peer = NS
+        消息大小 |       带宽(单向) |         延迟
+  ----------------------------------------
+         4 B |            - |     31.2 us
+         2 KB |    0.06 GB/s |          -
+         4 KB |    0.12 GB/s |          -
+         8 KB |    0.24 GB/s |          -
+        16 KB |    0.48 GB/s |          -
+        32 KB |    0.95 GB/s |          -
+        64 KB |    1.63 GB/s |          -
+       128 KB |    2.74 GB/s |          -
+       256 KB |    5.35 GB/s |          -
+       512 KB |    7.00 GB/s |          -
+      1024 KB |    8.18 GB/s |          -
+      2048 KB |   11.89 GB/s |          -
+      4096 KB |   13.54 GB/s |          -
+      8192 KB |   15.17 GB/s |          -
+     16384 KB |   16.13 GB/s |          -
+     32768 KB |   16.55 GB/s |          -
+     65536 KB |   16.76 GB/s |          -
+
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+==============================================================================
+  [2] NCCL all-reduce（world=2，busbw = algbw * 2(n-1)/n）
+==============================================================================
+        消息大小 |        时间 |      algbw |      busbw
+  ----------------------------------------------
+         2 KB |   188.9 us |    0.01 GB/s |    0.01 GB/s
+         4 KB |   130.0 us |    0.03 GB/s |    0.03 GB/s
+         8 KB |   125.9 us |    0.06 GB/s |    0.06 GB/s
+        16 KB |   107.6 us |    0.14 GB/s |    0.14 GB/s
+        32 KB |   108.0 us |    0.28 GB/s |    0.28 GB/s
+        64 KB |   107.0 us |    0.57 GB/s |    0.57 GB/s
+       128 KB |   103.4 us |    1.18 GB/s |    1.18 GB/s
+       256 KB |   105.5 us |    2.31 GB/s |    2.31 GB/s
+       512 KB |   137.2 us |    3.56 GB/s |    3.56 GB/s
+      1024 KB |   209.4 us |    4.66 GB/s |    4.66 GB/s
+      2048 KB |   322.0 us |    6.06 GB/s |    6.06 GB/s
+      4096 KB |   609.3 us |    6.41 GB/s |    6.41 GB/s
+      8192 KB |  1167.9 us |    6.69 GB/s |    6.69 GB/s
+     16384 KB |  2293.7 us |    6.81 GB/s |    6.81 GB/s
+     32768 KB |  4473.3 us |    6.99 GB/s |    6.99 GB/s
+     65536 KB |  8821.2 us |    7.09 GB/s |    7.09 GB/s
+==============================================================================
+  [3] all-reduce busbw 摘要
+==============================================================================
+  busbw 峰值 ≈ 7.09 GB/s（消息 65536 KB）
+  解读：对比硬件标称用 busbw；PCIe 机常见饱和约数十 GB/s，NVLink 为数百 GB/s
+
+
+[1;36m==> 3/6 smoke（0.6B 单卡/TP=2/PP=2 × eager,cg）[0m
+suite=smoke cases=6 gpus=2
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 1 --dp 1 --tag 0.6b-single-eager
+=== 0.6b-single-eager: tp=1 pp=1 dp=1 mode=eager gpus>=1 ===
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.52it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.51it/s]
+2026-09-27 00:42:24,824 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+FAIL 0.6b-single-eager: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+NCCL version 2.27.3+cuda12.9
+<<< 0.6b-single-eager rc=1 in 10.1s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 1 --dp 1 --tag 0.6b-single-cg --cg
+=== 0.6b-single-cg: tp=1 pp=1 dp=1 mode=cg gpus>=1 ===
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.45it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.44it/s]
+2026-09-27 00:42:34,685 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 1/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.48it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.48it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 2/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  6.86it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  6.85it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 3/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.31it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.30it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 4/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.09it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.09it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 5/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.30it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.29it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+engine init attempt 6/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+FAIL 0.6b-single-cg: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+NCCL version 2.27.3+cuda12.9
+[rank0]:[W927 00:42:58.086603749 ProcessGroupNCCL.cpp:1538] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+<<< 0.6b-single-cg rc=1 in 33.6s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 2 --pp 1 --dp 1 --tag 0.6b-tp2-eager
+=== 0.6b-tp2-eager: tp=2 pp=1 dp=1 mode=eager gpus>=2 ===
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:02<00:00,  2.68s/it]Loading weights: 100%|██████████| 1/1 [00:02<00:00,  2.68s/it]
+Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.70s/it]Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.70s/it]
+2026-09-27 00:43:21,928 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+FAIL 0.6b-tp2-eager: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+2026-09-27 00:43:22,014 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+Terminated
+[6] v4 实测结束 2026-09-27T00:45:19+08:00
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/dzyy-vllm/vllm-v4/src/control/executor.py", line 148, in _spawn_worker
+    worker_loop(worker)
+  File "/root/dzyy-vllm/vllm-v4/src/control/executor.py", line 186, in worker_loop
+    counts = worker.execute_model(cmd.sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/worker.py", line 193, in execute_model
+    result = self.model_runner.run_forward(sched)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 120, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 132, in run_forward
+    p = self._run_prefill(sched.prefills) if sched.prefills else None
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 247, in _run_prefill
+    hidden = self.model(
+             ^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 230, in forward
+    return self.model(input_ids, positions, attn, intermediate_tensors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 203, in forward
+    h, residual = layer(positions, h, residual, attn)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 151, in forward
+    hidden_states = self.self_attn(positions, hidden_states, attn)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 114, in forward
+    q, k, v = self._split_norm_rope(positions, qkv)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/models/qwen3.py", line 127, in _split_norm_rope
+    q, k = self.rotary_emb(positions, q, k)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/layers/rotary.py", line 60, in forward
+    return torch.ops.vllm.rotary_embedding(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/_ops.py", line 1243, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 344, in backend_impl
+    result = self._backend_fns[device_type](*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/_compile.py", line 53, in inner
+    return disable_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929, in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 377, in wrapped_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/layers/ops.py", line 48, in rotary_embedding
+    qo, ko = _flashinfer_rope(positions, qf, kf, head_size, cos_sin_cache, is_neox=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/api_logging.py", line 2348, in _auto_dump_wrapper
+    return _inner(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/rope.py", line 1214, in apply_rope_with_cos_sin_cache
+    _apply_rope_pos_ids_cos_sin_cache(
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/rope.py", line 356, in _apply_rope_pos_ids_cos_sin_cache
+    get_rope_module().apply_rope_pos_ids_cos_sin_cache(
+    ^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/rope.py", line 44, in get_rope_module
+    return gen_rope_module().build_and_load()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/jit/core.py", line 335, in build_and_load
+    self.build()
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/jit/core.py", line 569, in build
+    run_ninja(self.build_dir, self.ninja_path, verbose)
+  File "/root/miniconda3/lib/python3.12/site-packages/flashinfer/jit/cpp_ext.py", line 406, in run_ninja
+    subprocess.run(
+  File "/root/miniconda3/lib/python3.12/subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/root/miniconda3/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+<<< 0.6b-tp2-eager rc=-15 in 139.8s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 2 --pp 1 --dp 1 --tag 0.6b-tp2-cg --cg
+=== 0.6b-tp2-cg: tp=2 pp=1 dp=1 mode=cg gpus>=2 ===
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.24it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.24it/s]
+<<< 0.6b-tp2-cg rc=-15 in 17.8s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 2 --dp 1 --tag 0.6b-pp2-eager
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/dzyy-vllm/vllm-v4/src/control/executor.py", line 146, in _spawn_worker
+    worker.initialize()
+  File "/root/dzyy-vllm/vllm-v4/src/compute/worker.py", line 106, in initialize
+    self.model_runner = ModelRunner(
+                        ^^^^^^^^^^^^
+  File "/root/dzyy-vllm/vllm-v4/src/compute/model_runner.py", line 83, in __init__
+    world.barrier()
+  File "/root/dzyy-vllm/vllm-v4/src/distributed/parallel_state.py", line 87, in barrier
+    dist.barrier(self.cpu_group)
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py", line 4818, in barrier
+    work.wait()
+RuntimeError: [/pytorch/third_party/gloo/gloo/transport/tcp/pair.cc:544] Connection closed by peer [127.0.0.1]:9914
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+=== 0.6b-pp2-eager: tp=1 pp=2 dp=1 mode=eager gpus>=2 ===
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  2.01it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  2.01it/s]
+Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.32s/it]Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.32s/it]
+2026-09-27 00:45:55,749 - INFO - core.py:564 - flashinfer.jit: Building JIT module rope; this can take several minutes on first use.
+[INFO] 2 HF weights skipped (not in model): ['lm_head.weight', 'model.norm.weight']...
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+FAIL 0.6b-pp2-eager: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+<<< 0.6b-pp2-eager rc=-9 in 130.5s
+
+>>> /root/miniconda3/bin/python /root/dzyy-vllm/vllm-v4/bench/bench_v4.py --model /root/huggingface/Qwen3-0.6B --tp 1 --pp 2 --dp 1 --tag 0.6b-pp2-cg --cg
+=== 0.6b-pp2-cg: tp=1 pp=2 dp=1 mode=cg gpus>=2 ===
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:21<00:00, 21.79s/it]Loading weights: 100%|██████████| 1/1 [00:21<00:00, 21.80s/it]
+Loading weights: 100%|██████████| 1/1 [00:22<00:00, 22.09s/it]Loading weights: 100%|██████████| 1/1 [00:22<00:00, 22.09s/it]
+[INFO] 2 HF weights skipped (not in model): ['lm_head.weight', 'model.norm.weight']...
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+engine init attempt 1/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.98s/it]Loading weights: 100%|██████████| 1/1 [00:01<00:00,  1.98s/it]
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.85it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.84it/s]
+[INFO] 2 HF weights skipped (not in model): ['lm_head.weight', 'model.norm.weight']...
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+engine init attempt 2/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.18s/it]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.18s/it]
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  5.24it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  5.23it/s]
+[INFO] 2 HF weights skipped (not in model): ['lm_head.weight', 'model.norm.weight']...
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+engine init attempt 3/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.81s/it]Loading weights: 100%|██████████| 1/1 [00:03<00:00,  3.89s/it]
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.87it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.87it/s]
+[INFO] 2 HF weights skipped (not in model): ['lm_head.weight', 'model.norm.weight']...
+KV pool: 64 blocks × 256 tok (0.88 GiB)
+engine init attempt 4/6 failed: FileNotFoundError: [Errno 2] No such file or directory: 'ninja'

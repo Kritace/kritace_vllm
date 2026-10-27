@@ -1,0 +1,11 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.60it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  4.59it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  prompt_tokens=56  K=0: steps=64 gen=64
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.33it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.33it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+  K=3: steps=37 gen=64  一致=False
+    首个不同下标(生成段)=42
+    K=0[..]: [2070, 315, 20443, 11229, 13, 576, 2070, 702, 1083]
+    K=3[..]: [2070, 315, 20443, 11229, 11, 323, 374, 1431, 264]
+NCCL version 2.27.3+cuda12.9

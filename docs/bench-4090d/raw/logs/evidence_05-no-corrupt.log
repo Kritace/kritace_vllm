@@ -1,0 +1,66 @@
+[sched] seq=1 L=57 cached=56 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=58 cached=57 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=59 cached=58 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=60 cached=59 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=61 cached=60 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=62 cached=61 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=63 cached=62 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=64 cached=63 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=65 cached=64 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=66 cached=65 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=67 cached=66 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=68 cached=67 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=69 cached=68 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=70 cached=69 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=71 cached=70 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=72 cached=71 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=73 cached=72 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=74 cached=73 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=75 cached=74 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=76 cached=75 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=77 cached=76 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=78 cached=77 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=79 cached=78 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=80 cached=79 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=81 cached=80 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=82 cached=81 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=83 cached=82 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=84 cached=83 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=85 cached=84 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=86 cached=85 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=87 cached=86 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=88 cached=87 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=89 cached=88 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=90 cached=89 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=91 cached=90 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=92 cached=91 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=93 cached=92 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=94 cached=93 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=95 cached=94 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=96 cached=95 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=97 cached=96 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=98 cached=97 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=99 cached=98 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=100 cached=99 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=101 cached=100 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=102 cached=101 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=103 cached=102 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=104 cached=103 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=105 cached=104 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=106 cached=105 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=107 cached=106 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=108 cached=107 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=109 cached=108 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=110 cached=109 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=111 cached=110 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=112 cached=111 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=113 cached=112 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=114 cached=113 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=115 cached=114 blocks=1 draft=[] n_new=1
+  prompt=56 真值长度=60
+
+  === R1 全程真值草稿 ===  （共 12 个验证步）
+    → 不匹配的步数: 0/12
+
+  === R2 在 L=97 注入部分接受 ===  （共 12 个验证步）
+    → 不匹配的步数: 0/12

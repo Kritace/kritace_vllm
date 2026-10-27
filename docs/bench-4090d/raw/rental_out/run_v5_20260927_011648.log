@@ -1,0 +1,79 @@
+=== date ===
+2026-09-27T01:16:48+08:00
+=== gpu ===
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB
+=== topology ===
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+=== model ===
+MOE /root/huggingface/Qwen1.5-MoE-A2.7B exists= True
+DENSE /root/huggingface/Qwen3-0.6B exists= True
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.70it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.69it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+model=dense tp=1 ep=False mode=eager devices=[0] n=4
+  ttft_ms=26.29  decode_tok/s=48.63  e2e_tok/s=45.46
+  tokens=[12095, 13, 576, 6722]
+NCCL version 2.27.3+cuda12.9
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[/pytorch/third_party/gloo/gloo/transport/tcp/debug_logger.cc:9] ERROR failed to connect, willRetry=1, retry=1, retryLimit=3, rank=1, size=2, local=[127.0.0.1]:55006, remote=[127.0.0.1]:31137$1, error=SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+[/pytorch/third_party/gloo/gloo/transport/tcp/debug_logger.cc:9] ERROR failed to connect, willRetry=1, retry=2, retryLimit=3, rank=1, size=2, local=[127.0.0.1]:56030, remote=[127.0.0.1]:31137$1, error=SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+[/pytorch/third_party/gloo/gloo/transport/tcp/debug_logger.cc:9] ERROR failed to connect, willRetry=1, retry=3, retryLimit=3, rank=1, size=2, local=[127.0.0.1]:57054, remote=[127.0.0.1]:31137$1, error=SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+[/pytorch/third_party/gloo/gloo/transport/tcp/debug_logger.cc:9] ERROR failed to connect, willRetry=0, retry=4, retryLimit=3, rank=1, size=2, local=[127.0.0.1]:60638, remote=[127.0.0.1]:31137$1, error=SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+[rank1]:[E927 01:17:18.983724141 ProcessGroupGloo.cpp:71] Gloo connectFullMesh failed with [/pytorch/third_party/gloo/gloo/transport/tcp/pair.cc:152] timed out connecting: SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/dzyy-vllm/vllm-v5/src/control/executor.py", line 145, in _spawn_worker
+    worker.init_environment()
+  File "/root/dzyy-vllm/vllm-v5/src/compute/worker.py", line 73, in init_environment
+    init_distributed_environment(
+  File "/root/dzyy-vllm/vllm-v5/src/distributed/parallel_state.py", line 207, in init_distributed_environment
+    WORLD = Group(
+            ^^^^^^
+  File "/root/dzyy-vllm/vllm-v5/src/distributed/parallel_state.py", line 49, in __init__
+    self.cpu_group = dist.new_group(ranks=ranks, backend="gloo")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/c10d_logger.py", line 95, in wrapper
+    func_return = func(*args, **kwargs)
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py", line 5254, in new_group
+    return _new_group_with_tag(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py", line 5344, in _new_group_with_tag
+    pg, pg_store = _new_process_group_helper(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py", line 1991, in _new_process_group_helper
+    backend_class = ProcessGroupGloo(
+                    ^^^^^^^^^^^^^^^^^
+RuntimeError: Gloo connectFullMesh failed with [/pytorch/third_party/gloo/gloo/transport/tcp/pair.cc:152] timed out connecting: SO_ERROR: Connection refused, remote=[127.0.0.1]:31137$1
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+NCCL version 2.27.3+cuda12.9
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:   0%|          | 0/8 [00:00<?, ?it/s]Loading weights:  12%|█▎        | 1/8 [00:17<02:03, 17.61s/it]Loading weights:  12%|█▎        | 1/8 [00:17<02:05, 17.89s/it]Loading weights:  25%|██▌       | 2/8 [00:30<01:30, 15.02s/it]Loading weights:  25%|██▌       | 2/8 [00:35<01:45, 17.61s/it]Loading weights:  38%|███▊      | 3/8 [00:58<01:44, 20.90s/it]Loading weights:  38%|███▊      | 3/8 [01:19<02:29, 29.89s/it]Loading weights:  50%|█████     | 4/8 [01:28<01:25, 21.45s/it]Loading weights:  62%|██████▎   | 5/8 [01:29<00:42, 14.07s/it]Loading weights:  75%|███████▌  | 6/8 [01:30<00:19,  9.56s/it]

@@ -1,0 +1,56 @@
+
+########## A  0.6b-dp2-eager ##########
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  2.67it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  2.67it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+0.6b-dp2-eager | dp=2 | reqs=32 | 4096 tok | 1331.4 tok/s
+NCCL version 2.27.3+cuda12.9
+NCCL version 2.27.3+cuda12.9
+
+########## A  0.6b-dp2-cg ##########
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.18it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.18it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+0.6b-dp2-cg | dp=2 | reqs=32 | 4096 tok | 8260.2 tok/s
+NCCL version 2.27.3+cuda12.9
+NCCL version 2.27.3+cuda12.9
+
+########## B  cutlass / tp2 eager ##########
+KV pool: 64 blocks × 256 tok (1.50 GiB)
+2026-09-27 01:45:35,190 - INFO - core.py:564 - flashinfer.jit: Building JIT module fused_moe_89; this can take several minutes on first use.
+2026-09-27 01:54:37,556 - INFO - core.py:564 - flashinfer.jit: Building JIT module fused_moe_89; this can take several minutes on first use.
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## B  triton / tp2 eager ##########
+model=moe tp=2 ep=False mode=eager devices=[0, 1] n=64
+  ttft_ms=39.91  decode_tok/s=29.49  e2e_tok/s=29.41
+  tokens=[32671, 624, 59604, 198, 39572, 198, 94409, 198, 49, 635, 198, 102349, 510, 32, 151643, 33975]...
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## C  n=1 / tp2 cg ##########
+  ttft_ms=38.65  decode_tok/s=0.00  e2e_tok/s=25.87
+  tokens=[32671]
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## C  n=8 / tp2 cg ##########
+  ttft_ms=43.27  decode_tok/s=203.31  e2e_tok/s=102.96
+  tokens=[32671, 624, 59604, 198, 39572, 198, 94409, 198]
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## C  n=32 / tp2 cg ##########
+  ttft_ms=49.74  decode_tok/s=199.71  e2e_tok/s=156.12
+  tokens=[32671, 624, 59604, 198, 39572, 198, 94409, 198, 49, 635, 198, 102349, 510, 32, 151643, 33975]...
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+########## C  n=128 / tp2 cg ##########
+  ttft_ms=46.68  decode_tok/s=202.52  e2e_tok/s=189.97
+  tokens=[32671, 624, 59604, 198, 39572, 198, 94409, 198, 49, 635, 198, 102349, 510, 32, 151643, 33975]...
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+
+===== ALL DONE 2026-09-27T02:08:00+08:00 =====

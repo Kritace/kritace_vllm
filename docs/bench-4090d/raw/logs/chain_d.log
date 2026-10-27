@@ -1,0 +1,31 @@
+===== 等 GPU 队列清空 =====
+/root/chain_d.sh: line 11: e: command not found
+队列已空 2026-09-27T02:43:12+08:00
+===== 等官方 vLLM 可导入（最多 20 分钟）=====
+vllm 就绪 2026-09-27T02:43:17+08:00
+
+########## D  tp1-eager ##########
+(EngineCore pid=58193) INFO 09-27 02:43:54 [gpu_worker.py:640] Available KV cache memory: 19.67 GiB
+(EngineCore pid=58193) INFO 09-27 02:43:54 [kv_cache_utils.py:2395] GPU KV cache size: 184,192 tokens, Maximum concurrency for 4,096 tokens per request: 44.97x
+(EngineCore pid=58193) INFO 09-27 02:43:54 [kernel_warmup.py:172] JIT kernel warmup starting.
+(EngineCore pid=58193) INFO 09-27 02:43:54 [kernel_warmup.py:185] JIT kernel warmup finished in 0.00s.
+INFO 09-27 02:44:38 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+FAIL vllm-0.6b-tp1-eager: RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+/root/chain_d.sh: line 26: s: command not found
+
+########## D  tp1-cg ##########
+(EngineCore pid=59841) INFO 09-27 02:45:43 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8969 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9031. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(EngineCore pid=59841) INFO 09-27 02:45:43 [kv_cache_utils.py:2395] GPU KV cache size: 182,480 tokens, Maximum concurrency for 4,096 tokens per request: 44.55x
+(EngineCore pid=59841) INFO 09-27 02:45:43 [kernel_warmup.py:172] JIT kernel warmup starting.
+(EngineCore pid=59841) INFO 09-27 02:45:43 [kernel_warmup.py:185] JIT kernel warmup finished in 0.00s.
+INFO 09-27 02:46:39 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+FAIL vllm-0.6b-tp1-cg: RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+/root/chain_d.sh: line 28: 0: command not found
+
+########## D  tp2-eager ##########
+(EngineCore pid=61428)   File "/root/venvs/vllm-official/lib/python3.12/site-packages/vllm/distributed/device_communicators/shm_broadcast.py", line 797, in acquire_read
+(EngineCore pid=61428)     raise RuntimeError("cancelled")
+(EngineCore pid=61428) RuntimeError: cancelled
+FAIL vllm-0.6b-tp2-eager: RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {'EngineCore': 1}
+/root/miniconda3/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 3 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

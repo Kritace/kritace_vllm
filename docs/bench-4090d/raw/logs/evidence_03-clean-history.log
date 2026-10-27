@@ -1,0 +1,117 @@
+[sched] seq=1 L=57 cached=56 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=58 cached=57 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=59 cached=58 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=60 cached=59 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=61 cached=60 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=62 cached=61 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=63 cached=62 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=64 cached=63 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=65 cached=64 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=66 cached=65 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=67 cached=66 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=68 cached=67 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=69 cached=68 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=70 cached=69 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=71 cached=70 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=72 cached=71 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=73 cached=72 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=74 cached=73 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=75 cached=74 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=76 cached=75 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=77 cached=76 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=78 cached=77 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=79 cached=78 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=80 cached=79 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=81 cached=80 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=82 cached=81 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=83 cached=82 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=84 cached=83 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=85 cached=84 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=86 cached=85 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=87 cached=86 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=88 cached=87 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=89 cached=88 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=90 cached=89 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=91 cached=90 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=92 cached=91 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=93 cached=92 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=94 cached=93 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=95 cached=94 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=96 cached=95 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=97 cached=96 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=98 cached=97 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=99 cached=98 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=100 cached=99 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=101 cached=100 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=102 cached=101 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=103 cached=102 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=104 cached=103 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=105 cached=104 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=106 cached=105 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=107 cached=106 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=108 cached=107 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=109 cached=108 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=110 cached=109 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=111 cached=110 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=112 cached=111 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=113 cached=112 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=114 cached=113 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=115 cached=114 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=116 cached=115 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=117 cached=116 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=118 cached=117 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=119 cached=118 blocks=1 draft=[] n_new=1
+  prompt=56  真值前 12 个 = [304, 279, 2070, 315, 6366, 8038, 13, 576, 2070, 702, 14700, 18512]
+[sched] seq=2 L=67 cached=66 blocks=1 draft=[18512, 304, 279] n_new=4
+[wire] seq=2 status=SequenceStatus.RUNNING tokens=67 prompt=66 cached=66 blocks=1 scheduled=4 draft=[18512, 304, 279]
+[spec] seq=2 L=67 cached=66 sched=4 width=4 draft=[18512, 304, 279] seg=[18512, 304, 279, 1537] j=3 emitted=[18512, 304, 279, 1537]
+[sched] seq=2 L=71 cached=70 blocks=1 draft=[18512, 304, 279] n_new=4
+[wire] seq=2 status=SequenceStatus.RUNNING tokens=71 prompt=66 cached=70 blocks=1 scheduled=4 draft=[18512, 304, 279]
+[spec] seq=2 L=71 cached=70 sched=4 width=4 draft=[18512, 304, 279] seg=[13212, 7826, 279, 1537] j=0 emitted=[13212]
+[sched] seq=2 L=72 cached=71 blocks=1 draft=[18512, 304, 279] n_new=4
+[wire] seq=2 status=SequenceStatus.RUNNING tokens=72 prompt=66 cached=71 blocks=1 scheduled=4 draft=[18512, 304, 279]
+[spec] seq=2 L=72 cached=71 sched=4 width=4 draft=[18512, 304, 279] seg=[11, 11, 279, 1537] j=0 emitted=[11]
+[sched] seq=3 L=77 cached=76 blocks=1 draft=[3598, 949, 315] n_new=4
+[wire] seq=3 status=SequenceStatus.RUNNING tokens=77 prompt=76 cached=76 blocks=1 scheduled=4 draft=[3598, 949, 315]
+[spec] seq=3 L=77 cached=76 sched=4 width=4 draft=[3598, 949, 315] seg=[3598, 949, 315, 279] j=3 emitted=[3598, 949, 315, 279]
+[sched] seq=3 L=81 cached=80 blocks=1 draft=[3598, 949, 315] n_new=4
+[wire] seq=3 status=SequenceStatus.RUNNING tokens=81 prompt=76 cached=80 blocks=1 scheduled=4 draft=[3598, 949, 315]
+[spec] seq=3 L=81 cached=80 sched=4 width=4 draft=[3598, 949, 315] seg=[6366, 1879, 315, 279] j=0 emitted=[6366]
+[sched] seq=3 L=82 cached=81 blocks=1 draft=[3598, 949, 315] n_new=4
+[wire] seq=3 status=SequenceStatus.RUNNING tokens=82 prompt=76 cached=81 blocks=1 scheduled=4 draft=[3598, 949, 315]
+[spec] seq=3 L=82 cached=81 sched=4 width=4 draft=[3598, 949, 315] seg=[4958, 13, 315, 279] j=0 emitted=[4958]
+[sched] seq=4 L=87 cached=86 blocks=1 draft=[1083, 3635, 264] n_new=4
+[wire] seq=4 status=SequenceStatus.RUNNING tokens=87 prompt=86 cached=86 blocks=1 scheduled=4 draft=[1083, 3635, 264]
+[spec] seq=4 L=87 cached=86 sched=4 width=4 draft=[1083, 3635, 264] seg=[1083, 3635, 264, 3598] j=3 emitted=[1083, 3635, 264, 3598]
+[sched] seq=4 L=91 cached=90 blocks=1 draft=[1083, 3635, 264] n_new=4
+[wire] seq=4 status=SequenceStatus.RUNNING tokens=91 prompt=86 cached=90 blocks=1 scheduled=4 draft=[1083, 3635, 264]
+[spec] seq=4 L=91 cached=90 sched=4 width=4 draft=[1083, 3635, 264] seg=[949, 949, 264, 3598] j=0 emitted=[949]
+[sched] seq=4 L=92 cached=91 blocks=1 draft=[1083, 3635, 264] n_new=4
+[wire] seq=4 status=SequenceStatus.RUNNING tokens=92 prompt=86 cached=91 blocks=1 scheduled=4 draft=[1083, 3635, 264]
+[spec] seq=4 L=92 cached=91 sched=4 width=4 draft=[1083, 3635, 264] seg=[315, 315, 264, 3598] j=0 emitted=[315]
+[sched] seq=5 L=97 cached=96 blocks=1 draft=[11229, 13, 576] n_new=4
+[wire] seq=5 status=SequenceStatus.RUNNING tokens=97 prompt=96 cached=96 blocks=1 scheduled=4 draft=[11229, 13, 576]
+[spec] seq=5 L=97 cached=96 sched=4 width=4 draft=[11229, 13, 576] seg=[11229, 13, 576, 2070] j=3 emitted=[11229, 13, 576, 2070]
+[sched] seq=5 L=101 cached=100 blocks=1 draft=[11229, 13, 576] n_new=4
+[wire] seq=5 status=SequenceStatus.RUNNING tokens=101 prompt=96 cached=100 blocks=1 scheduled=4 draft=[11229, 13, 576]
+[spec] seq=5 L=101 cached=100 sched=4 width=4 draft=[11229, 13, 576] seg=[702, 374, 576, 2070] j=0 emitted=[702]
+[sched] seq=5 L=102 cached=101 blocks=1 draft=[11229, 13, 576] n_new=4
+[wire] seq=5 status=SequenceStatus.RUNNING tokens=102 prompt=96 cached=101 blocks=1 scheduled=4 draft=[11229, 13, 576]
+[spec] seq=5 L=102 cached=101 sched=4 width=4 draft=[11229, 13, 576] seg=[1083, 11, 576, 2070] j=0 emitted=[1083]
+[sched] seq=6 L=107 cached=106 blocks=1 draft=[315, 279, 2070] n_new=4
+[wire] seq=6 status=SequenceStatus.RUNNING tokens=107 prompt=106 cached=106 blocks=1 scheduled=4 draft=[315, 279, 2070]
+[spec] seq=6 L=107 cached=106 sched=4 width=4 draft=[315, 279, 2070] seg=[315, 279, 2070, 315] j=3 emitted=[315, 279, 2070, 315]
+[sched] seq=6 L=111 cached=110 blocks=1 draft=[315, 279, 2070] n_new=4
+[wire] seq=6 status=SequenceStatus.RUNNING tokens=111 prompt=106 cached=110 blocks=1 scheduled=4 draft=[315, 279, 2070]
+[spec] seq=6 L=111 cached=110 sched=4 width=4 draft=[315, 279, 2070] seg=[20443, 20443, 2070, 315] j=0 emitted=[20443]
+[sched] seq=6 L=112 cached=111 blocks=1 draft=[315, 279, 2070] n_new=4
+[wire] seq=6 status=SequenceStatus.RUNNING tokens=112 prompt=106 cached=111 blocks=1 scheduled=4 draft=[315, 279, 2070]
+[spec] seq=6 L=112 cached=111 sched=4 width=4 draft=[315, 279, 2070] seg=[11229, 279, 2070, 315] j=0 emitted=[11229]
+
+  上面每行的 [spec] 里：cached = 复现位置，seg 四元组应与真值一致
+  真值对照（生成段下标 -> token）：
+    k=10 期待 seg = [18512, 304, 279, 1537]
+    k=20 期待 seg = [3598, 949, 315, 279]
+    k=30 期待 seg = [1083, 3635, 264, 3598]
+    k=40 期待 seg = [11229, 13, 576, 2070]
+    k=50 期待 seg = [315, 279, 2070, 315]

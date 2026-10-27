@@ -1,0 +1,22 @@
+前置队列已结束 2026-09-27T02:59:37+08:00
+
+--- 8b-vllm-spec-real ---
+(EngineCore pid=68547) INFO 09-27 03:01:31 [gpu_model_runner.py:6697] Profiling CUDA graph memory: PIECEWISE=25 (largest=192), FULL=13 (largest=96)
+(EngineCore pid=68547) INFO 09-27 03:01:33 [gpu_model_runner.py:6822] Estimated CUDA graph memory: 0.36 GiB total
+(EngineCore pid=68547) INFO 09-27 03:01:33 [gpu_worker.py:640] Available KV cache memory: 2.23 GiB
+(EngineCore pid=68547) INFO 09-27 03:01:33 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9200 is equivalent to --gpu-memory-utilization=0.9048 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9352. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(EngineCore pid=68547) INFO 09-27 03:01:33 [kv_cache_utils.py:2395] GPU KV cache size: 9,120 tokens, Maximum concurrency for 2,048 tokens per request: 4.45x
+(EngineCore pid=68547) INFO 09-27 03:01:33 [kernel_warmup.py:172] JIT kernel warmup starting.
+(EngineCore pid=68547) JIT kernel warmup (223 compile keys):   0%|          | 0/13 [00:00<?, ?kernel/s]JIT kernel warmup (223 compile keys):   8%|▊         | 1/13 [01:03<12:45, 63.76s/kernel, _DecoratedTritonJitKernel (20 keys)]JIT kernel warmup (223 compile keys):  15%|█▌        | 2/13 [01:09<05:24, 29.52s/kernel, _DecoratedTritonJitKernel (24 keys)]INFO 09-27 03:03:23 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+FAIL 8b-vllm-spec-real: RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+
+--- 8b-vllm-spec-dummy ---
+Rendering prompts:   0%|          | 0/8 [00:00<?, ?it/s]Rendering prompts: 100%|██████████| 8/8 [00:00<00:00, 1613.27it/s]
+Processed prompts:   0%|          | 0/8 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts:  12%|█▎        | 1/8 [00:02<00:18,  2.61s/it, est. speed input: 98.13 toks/s, output: 49.06 toks/s]Processed prompts:  88%|████████▊ | 7/8 [00:03<00:00,  2.19it/s, est. speed input: 465.86 toks/s, output: 232.93 toks/s]Processed prompts: 100%|██████████| 8/8 [00:04<00:00,  2.13it/s, est. speed input: 468.33 toks/s, output: 234.16 toks/s]Processed prompts: 100%|██████████| 8/8 [00:04<00:00,  2.13it/s, est. speed input: 468.33 toks/s, output: 234.16 toks/s]Processed prompts: 100%|██████████| 8/8 [00:04<00:00,  1.83it/s, est. speed input: 468.33 toks/s, output: 234.16 toks/s]
+8b-vllm-spec-dummy | ttft=69.55ms | decode=119.6 | batch8=233.8
+INFO 09-27 03:04:44 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(EngineCore pid=70134) INFO 09-27 03:04:44 [core.py:1342] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=70134) INFO 09-27 03:04:44 [core.py:1493] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=70134) INFO 09-27 03:04:44 [core.py:1524] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=70134) INFO 09-27 03:04:44 [core.py:1355] [shutdown] EngineCore: exiting busy loop
+===== R DONE 2026-09-27T03:04:48+08:00 =====

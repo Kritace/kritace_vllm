@@ -1,0 +1,181 @@
+============================================================
+ vllm-v4 / v5 租卡环境准备
+ ROOT=/root/dzyy-vllm
+ PY=/root/miniconda3/bin/python
+ MODELS=0.6b
+============================================================
+
+[1;36m==> 1/5 环境体检[0m
+--- GPU ---
+0, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+1, NVIDIA GeForce RTX 4090 D, 24564 MiB, 580.105.08
+--- 拓扑（解释 TP 结果要用）---
+	[4mGPU0	GPU1	NIC0	NIC1	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PXB	SYS	SYS	36-71,108-143	1		N/A
+GPU1	PXB	 X 	SYS	SYS	36-71,108-143	1		N/A
+NIC0	SYS	SYS	 X 	PIX				
+NIC1	SYS	SYS	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+
+--- 磁盘（全套模型约 82GB）---
+overlay          30G  1.6G   29G   6% /
+--- Python / Torch ---
+python       3.12.3
+torch        2.8.0+cu128
+torch.cuda   12.8
+cuda 可用    True
+cc           8.9
+cxx11 abi    1
+FLASHINFER_CUDA_ARCH_LIST=8.9
+  → 识别为 4090 / 4090D (sm_89)
+
+[1;36m==> 2/5 模型下载[0m
+
+[1;36m==> 3/5 模型目录软链[0m
+  完成（cases.py 无需改动）
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Requirement already satisfied: modelscope in /root/miniconda3/lib/python3.12/site-packages (1.40.1)
+Requirement already satisfied: filelock in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (3.18.0)
+Requirement already satisfied: modelscope-hub>=0.4.2 in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (0.4.5)
+Requirement already satisfied: packaging in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (23.2)
+Requirement already satisfied: requests>=2.25 in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (2.31.0)
+Requirement already satisfied: setuptools in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (69.5.1)
+Requirement already satisfied: tqdm>=4.64.0 in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (4.66.2)
+Requirement already satisfied: urllib3>=1.26 in /root/miniconda3/lib/python3.12/site-packages (from modelscope) (2.1.0)
+Requirement already satisfied: cryptography>=41 in /root/miniconda3/lib/python3.12/site-packages (from modelscope-hub>=0.4.2->modelscope) (42.0.5)
+Requirement already satisfied: charset-normalizer<4,>=2 in /root/miniconda3/lib/python3.12/site-packages (from requests>=2.25->modelscope) (2.0.4)
+Requirement already satisfied: idna<4,>=2.5 in /root/miniconda3/lib/python3.12/site-packages (from requests>=2.25->modelscope) (3.20)
+Requirement already satisfied: certifi>=2017.4.17 in /root/miniconda3/lib/python3.12/site-packages (from requests>=2.25->modelscope) (2024.2.2)
+Requirement already satisfied: cffi>=1.12 in /root/miniconda3/lib/python3.12/site-packages (from cryptography>=41->modelscope-hub>=0.4.2->modelscope) (1.16.0)
+Requirement already satisfied: pycparser in /root/miniconda3/lib/python3.12/site-packages (from cffi>=1.12->cryptography>=41->modelscope-hub>=0.4.2->modelscope) (2.21)
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+  待下载约 2GB，目标分区可用 38GB（/root/huggingface）
+[skip] Qwen3-0.6B 已存在
+
+[1;36m==> 3/5 依赖安装[0m
+torch=2.8.0 cuda=12.8 abi=TRUE
+[skip] flash-attn 已安装
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Collecting flashinfer-python
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/55/72/0ccab3f65c91b24e42fbb9abb9453639b738cd4af90718e95ee0431ac53f/flashinfer_python-0.7.0-py3-none-any.whl (33.7 MB)
+Collecting msgspec
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/b5/d1/d4cd9fe89c7d400d7a18f86ccc94daa3f0927f53558846fcb60791dce5d6/msgspec-0.21.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (225 kB)
+Requirement already satisfied: pyzmq in /root/miniconda3/lib/python3.12/site-packages (27.0.1)
+Requirement already satisfied: triton in /root/miniconda3/lib/python3.12/site-packages (3.4.0)
+Collecting transformers
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/e8/d0/c502b60d684adbd98a8dc7d5bb866842772b816ac4354e4608be240041ae/transformers-5.17.0-py3-none-any.whl (12.3 MB)
+Collecting safetensors
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/28/50/f203ff3a3ddfe19308efc83c5a3a29ed02bf786732ec35e68bf9162f3365/safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (516 kB)
+Requirement already satisfied: huggingface_hub>=0.23.0 in /root/miniconda3/lib/python3.12/site-packages (2.0.0)
+Requirement already satisfied: Brotli>=1.1.0 in /root/miniconda3/lib/python3.12/site-packages (1.2.0)
+Requirement already satisfied: zstandard>=0.24.0 in /root/miniconda3/lib/python3.12/site-packages (0.25.0)
+Collecting xxhash
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/83/97/31bd8b8279e6935a0719f6910ced15e9d5a2cd554b253f6027ce1b5a1c2c/xxhash-4.0.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (261 kB)
+Requirement already satisfied: pyyaml in /root/miniconda3/lib/python3.12/site-packages (6.0.2)
+Requirement already satisfied: numpy in /root/miniconda3/lib/python3.12/site-packages (2.3.2)
+Requirement already satisfied: tqdm in /root/miniconda3/lib/python3.12/site-packages (4.66.2)
+Requirement already satisfied: protobuf in /root/miniconda3/lib/python3.12/site-packages (6.31.1)
+Collecting tabulate
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl (39 kB)
+Collecting apache-tvm-ffi<0.2,>=0.1.11 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/e8/db/68786fdc0bfb3a9782df7304c1e577b9c5a7d14c75e98e06571cc1869b3f/apache_tvm_ffi-0.1.14.post1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (3.3 MB)
+Requirement already satisfied: click in /root/miniconda3/lib/python3.12/site-packages (from flashinfer-python) (8.5.0)
+Collecting cuda-python>=12.0 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/67/83/34e195ac04461f021eb6f25e962c5d4633903a1d67f3d6f29b8bff218fe0/cuda_python-13.4.1-py3-none-any.whl (7.6 kB)
+Collecting cuda-tile>=1.4.0 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/40/21/3dfeafbd3512e94a277a25ce022c10e7bdff5d43e364afffcc0928f7fcaf/cuda_tile-1.6.0-cp312-cp312-manylinux2014_x86_64.whl (382 kB)
+Collecting einops (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/2a/09/f8d8f8f31e4483c10a906437b4ce31bdf3d6d417b73fe33f1a8b59e34228/einops-0.8.2-py3-none-any.whl (65 kB)
+Collecting nccl-extensions>=0.1.0 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/f3/3c/b043c1f8ca2766d48e30e9cc5a0d65d51aef77e3a8d18dbbaa95fd5386e2/nccl_extensions-0.1.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (22.6 MB)
+Collecting nccl4py>=0.4.1 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/bf/c5/bd7d2f1251215881233580f402606e5a480b60f469f7dbea01d30fb99066/nccl4py-0.6.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (3.7 MB)
+Requirement already satisfied: ninja in /root/miniconda3/lib/python3.12/site-packages (from flashinfer-python) (1.13.2)
+Collecting nvidia-cudnn-frontend>=1.29.0 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/ee/95/c92076af7561e6e43da1ee3ac4155202dcd3876e5b999ff0dea5754eb3d2/nvidia_cudnn_frontend-1.30.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (8.8 MB)
+Collecting nvidia-cutlass-dsl>=4.6.2a0 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/e4/f4/e96f452f7975dd2fd4d2a4af88c63205431dad7efbe63aff6e3a4b1ada17/nvidia_cutlass_dsl-4.8.0-py3-none-any.whl (10 kB)
+Collecting nvidia-ml-py (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/53/a1/1681dfa1c904d4e3e72e51b55a0ff012d50b766843ef832d584abe2113c6/nvidia_ml_py-13.615.71-py3-none-any.whl (58 kB)
+Collecting packaging>=24.2 (from flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl (129 kB)
+Requirement already satisfied: requests in /root/miniconda3/lib/python3.12/site-packages (from flashinfer-python) (2.31.0)
+Requirement already satisfied: torch in /root/miniconda3/lib/python3.12/site-packages (from flashinfer-python) (2.8.0+cu128)
+Requirement already satisfied: setuptools>=40.8.0 in /root/miniconda3/lib/python3.12/site-packages (from triton) (69.5.1)
+Collecting huggingface_hub>=0.23.0
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl (846 kB)
+Collecting regex>=2025.10.22 (from transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/cb/f5/dcdf5e0d898024005cfcce631e3e934d111dfbe177ca0b7f253ae8a735a2/regex-2026.9.10-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (804 kB)
+Collecting tokenizers<0.24.0,>=0.23.1 (from transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/2c/ca/ca6b93c7820df123b2662a9469e8facc826ccc94e98fdd0d615f6431e73a/tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.4 MB)
+Collecting typer (from transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/dc/bf/205d0004930ede8f542fb58f601526fccf4ae7626075ca1e6c4de5d3d652/typer-0.27.2-py3-none-any.whl (123 kB)
+Requirement already satisfied: filelock>=3.10.0 in /root/miniconda3/lib/python3.12/site-packages (from huggingface_hub>=0.23.0) (3.18.0)
+Requirement already satisfied: fsspec>=2023.5.0 in /root/miniconda3/lib/python3.12/site-packages (from huggingface_hub>=0.23.0) (2025.7.0)
+Requirement already satisfied: hf-xet<2.0.0,>=1.6.0 in /root/miniconda3/lib/python3.12/site-packages (from huggingface_hub>=0.23.0) (1.6.0)
+Requirement already satisfied: httpx<1,>=0.23.0 in /root/miniconda3/lib/python3.12/site-packages (from huggingface_hub>=0.23.0) (0.28.1)
+Requirement already satisfied: typing-extensions>=4.1.0 in /root/miniconda3/lib/python3.12/site-packages (from huggingface_hub>=0.23.0) (4.14.1)
+Collecting cuda-bindings~=13.4.1 (from cuda-python>=12.0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/b8/c3/efb6bbb7307bf5c83dc4acca650280b210c67ed1a1a60f898a90e7c82e38/cuda_bindings-13.4.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (7.2 MB)
+Collecting cuda-core~=1.2.0 (from cuda-python>=12.0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/b4/cb/6e5f7af55ea54b97c0ad1ab21597da29b3e2c62709fd94a091024b8446b0/cuda_core-1.2.1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (6.6 MB)
+Collecting cuda-pathfinder~=1.1 (from cuda-python>=12.0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/98/59/239c7259e669c46ddbcac0aa60e3a0ef00bfeaaa687f905b24dd6a7a10fe/cuda_pathfinder-1.8.2-py3-none-any.whl (62 kB)
+Requirement already satisfied: anyio in /root/miniconda3/lib/python3.12/site-packages (from httpx<1,>=0.23.0->huggingface_hub>=0.23.0) (4.10.0)
+Requirement already satisfied: certifi in /root/miniconda3/lib/python3.12/site-packages (from httpx<1,>=0.23.0->huggingface_hub>=0.23.0) (2024.2.2)
+Requirement already satisfied: httpcore==1.* in /root/miniconda3/lib/python3.12/site-packages (from httpx<1,>=0.23.0->huggingface_hub>=0.23.0) (1.0.9)
+Requirement already satisfied: idna in /root/miniconda3/lib/python3.12/site-packages (from httpx<1,>=0.23.0->huggingface_hub>=0.23.0) (3.20)
+Requirement already satisfied: h11>=0.16 in /root/miniconda3/lib/python3.12/site-packages (from httpcore==1.*->httpx<1,>=0.23.0->huggingface_hub>=0.23.0) (0.16.0)
+Collecting nvidia-cutlass-dsl-libs-base==4.8.0 (from nvidia-cutlass-dsl>=4.6.2a0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/12/1c/2f7a13626af1edfefb5ad69234d47e3b212064a42ad2e6db59351b5ae002/nvidia_cutlass_dsl_libs_base-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (3.1 MB)
+Collecting nvidia-cutlass-dsl-libs-cu12==4.8.0 (from nvidia-cutlass-dsl>=4.6.2a0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/13/a0/fdde64cc231f52a716107bf1a1246db9dde8cb11b28278b8d9c05f7c87bd/nvidia_cutlass_dsl_libs_cu12-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (91.7 MB)
+Collecting nvidia-cutlass-dsl-libs-core==4.8.0 (from nvidia-cutlass-dsl-libs-base==4.8.0->nvidia-cutlass-dsl>=4.6.2a0->flashinfer-python)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/85/66/d05f0ae372b80fc757e59d5211d93483c6ff721f574cb68cad84ceb87157/nvidia_cutlass_dsl_libs_core-4.8.0-py3-none-any.whl (1.6 MB)
+Requirement already satisfied: charset-normalizer<4,>=2 in /root/miniconda3/lib/python3.12/site-packages (from requests->flashinfer-python) (2.0.4)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /root/miniconda3/lib/python3.12/site-packages (from requests->flashinfer-python) (2.1.0)
+Requirement already satisfied: sympy>=1.13.3 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (1.14.0)
+Requirement already satisfied: networkx in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (3.5)
+Requirement already satisfied: jinja2 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (3.1.6)
+Requirement already satisfied: nvidia-cuda-nvrtc-cu12==12.8.93 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.93)
+Requirement already satisfied: nvidia-cuda-runtime-cu12==12.8.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.90)
+Requirement already satisfied: nvidia-cuda-cupti-cu12==12.8.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.90)
+Requirement already satisfied: nvidia-cudnn-cu12==9.10.2.21 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (9.10.2.21)
+Requirement already satisfied: nvidia-cublas-cu12==12.8.4.1 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.4.1)
+Requirement already satisfied: nvidia-cufft-cu12==11.3.3.83 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (11.3.3.83)
+Requirement already satisfied: nvidia-curand-cu12==10.3.9.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (10.3.9.90)
+Requirement already satisfied: nvidia-cusolver-cu12==11.7.3.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (11.7.3.90)
+Requirement already satisfied: nvidia-cusparse-cu12==12.5.8.93 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.5.8.93)
+Requirement already satisfied: nvidia-cusparselt-cu12==0.7.1 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (0.7.1)
+Requirement already satisfied: nvidia-nccl-cu12==2.27.3 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (2.27.3)
+Requirement already satisfied: nvidia-nvtx-cu12==12.8.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.90)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.8.93 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.93)
+Requirement already satisfied: nvidia-cufile-cu12==1.13.1.3 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (1.13.1.3)
+Collecting shellingham>=1.3.0 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+Collecting rich>=13.8.0 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl (310 kB)
+Collecting annotated-doc>=0.0.2 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+Collecting nvidia-cutlass-dsl-libs-cu13==4.8.0 (from nvidia-cutlass-dsl[cu13]>=4.6.2->nvidia-cudnn-frontend>=1.29.0->flashinfer-python)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/df/75/6c52c58fc0fdab223feb9162886736390a6f902183d24df1508ac620a69d/nvidia_cutlass_dsl_libs_cu13-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (92.0 MB)
+     ╸                                        1.5/92.0 MB 15.5 kB/s eta 1:37:25
+ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated the package versions, please update the hashes. Otherwise, examine the package contents carefully; someone may have tampered with them.
+    nvidia-cutlass-dsl-libs-cu13==4.8.0 from https://pypi.tuna.tsinghua.edu.cn/packages/df/75/6c52c58fc0fdab223feb9162886736390a6f902183d24df1508ac620a69d/nvidia_cutlass_dsl_libs_cu13-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (from nvidia-cutlass-dsl[cu13]>=4.6.2->nvidia-cudnn-frontend>=1.29.0->flashinfer-python):
+        Expected sha256 463cd7f0c452ffeeecb530a15aeb1b10cbbd2c8da6c5aa2fecf65f836258a732
+             Got        5c77ff863687aaa4be0503c3bd2acec8c09db8a94b14567cebf93d5445f7b1c6
+

@@ -1,0 +1,45 @@
+01:11:59 | GPU 0% CPU 870% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:12:30 | GPU 0% CPU 766% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:13:00 | GPU 0% CPU 682% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:13:30 | GPU 0% CPU 616% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:14:01 | GPU 0% CPU 562% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:14:31 | GPU 0% CPU 515% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:15:01 | GPU 0% CPU 477% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:15:32 | GPU 0% CPU 443% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:16:02 | GPU 0% CPU 414% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:16:32 | GPU 0% CPU 389% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=1 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:17:03 | GPU 21% CPU 545% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:无 FAIL=1 | MoE=27G
+01:17:33 | GPU 0% CPU 64% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:18:04 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=1 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:18:34 | GPU 0% CPU 1237% | v4=0 mx=0 bn=0 | v5=2 moe=3 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:无 FAIL=1 | MoE=27G
+01:19:05 | GPU 0% CPU 1408% | v4=0 mx=0 bn=0 | v5=2 moe=3 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:无 FAIL=1 | MoE=27G
+01:19:36 | GPU 0% CPU 1328% | v4=0 mx=0 bn=0 | v5=2 moe=3 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:无 FAIL=1 | MoE=27G
+01:20:08 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=0 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:20:38 | GPU 0% CPU 207% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:21:08 | GPU 0% CPU 1364% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:21:39 | GPU 0% CPU 1447% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:22:10 | GPU 0% CPU 1364% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:22:41 | GPU 0% CPU 1020% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:23:11 | GPU 0% CPU 820% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:23:42 | GPU 0% CPU 686% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:24:12 | GPU 0% CPU 586% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:24:42 | GPU 0% CPU 514% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:25:13 | GPU 0% CPU 458% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:25:43 | GPU 0% CPU 411% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:26:13 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=0 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:26:44 | GPU 0% CPU 30% | v4=0 mx=0 bn=0 | v5=0 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:27:14 | GPU 0% CPU 550% | v4=0 mx=0 bn=0 | v5=1 moe=1 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:无 FAIL=1 | MoE=27G
+01:27:45 | GPU 0% CPU 1193% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:28:16 | GPU 0% CPU 1455% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:28:46 | GPU 0% CPU 1516% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:29:18 | GPU 36% CPU 1341% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=dense tp=1 ep=False mode=eager FAIL=1 | MoE=27G
+01:29:48 | GPU 0% CPU 1079% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=eager FAIL=1 | MoE=27G
+01:30:19 | GPU 0% CPU 1412% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=eager FAIL=1 | MoE=27G
+01:30:50 | GPU 0% CPU 1475% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=eager FAIL=1 | MoE=27G
+01:31:21 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=1 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=cg FAIL=1 | MoE=27G
+01:31:51 | GPU 0% CPU 1249% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=cg FAIL=1 | MoE=27G
+01:32:23 | GPU 2% CPU 1427% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=False mode=cg FAIL=1 | MoE=27G
+01:32:53 | GPU 0% CPU 279% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=True mode=eager FAIL=1 | MoE=27G
+01:33:24 | GPU 0% CPU 1364% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=True mode=eager FAIL=1 | MoE=27G
+01:33:55 | GPU 0% CPU 1466% | v4=0 mx=0 bn=0 | v5=1 moe=2 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=True mode=eager FAIL=1 | MoE=27G
+01:34:26 | GPU 0% CPU 1% | v4=0 mx=0 bn=0 | v5=0 moe=0 dl=0 ch=0 | v4:0.6b-pp2-cg+compile v5:model=moe tp=2 ep=True mode=cg FAIL=1 | MoE=27G

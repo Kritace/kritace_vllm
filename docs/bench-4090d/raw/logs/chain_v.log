@@ -1,0 +1,19 @@
+########## K=0 基线（无草稿，不应有 spec 打印）##########
+[sched] seq=1 L=69 cached=68 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=70 cached=69 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=71 cached=70 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=72 cached=71 blocks=1 draft=[] n_new=1
+  k=0 prompt=68 steps=5
+
+########## K=2 投机（看 draft / seg / j）##########
+[sched] seq=1 L=69 cached=68 blocks=1 draft=[100916, 106980] n_new=3
+[spec] seq=1 L=69 cached=68 sched=3 width=3 draft=[100916, 106980] seg=[100916, 0, 0] j=1 emitted=[100916, 0]
+[sched] seq=1 L=71 cached=70 blocks=1 draft=[] n_new=1
+[sched] seq=1 L=72 cached=71 blocks=1 draft=[] n_new=1
+  k=2 prompt=68 steps=4
+
+########## 序列对比 ##########
+  K=0 生成 [100043, 100916, 106980, 101142, 116913]
+  K=2 生成 [100043, 100916, 0, 220, 100043]
+  一致: False
+===== V DONE 2026-09-27T03:12:30+08:00 =====

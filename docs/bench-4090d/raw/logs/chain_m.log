@@ -1,0 +1,63 @@
+########## 1. 投机正确性验收 ##########
+--- 基线 K=0 ---
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.33it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.33it/s]
+KV pool: 128 blocks × 256 tok (3.50 GiB)
+  k=0 steps=48 tokens=116 完成
+NCCL version 2.27.3+cuda12.9
+--- 投机 K=5 ---
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/core.py", line 141, in step
+[rank0]:     outputs = self.scheduler.update(sched, p_ids, d_ids)
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/scheduler.py", line 192, in update
+[rank0]:     outputs.extend(self._update_batch(sched.prefills, p_ids, is_prefill=True))
+[rank0]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/scheduler.py", line 258, in _update_batch
+[rank0]:     return self._update_spec_batch(seqs, token_ids)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/scheduler.py", line 218, in _update_spec_batch
+[rank0]:     emitted = [*draft[:j], int(seg[j])]
+[rank0]:                                ~~~^^^
+[rank0]: IndexError: list index out of range
+[rank0]:[W927 02:45:37.348679604 ProcessGroupNCCL.cpp:1538] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+
+=== 判定 ===
+  ⚠️ 结果文件缺失，说明某次运行失败
+
+########## 2. n-gram 接受率 ##########
+[rank0]:              ^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/engine.py", line 67, in __init__
+[rank0]:     self._client = make_client(
+[rank0]:                    ^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/client.py", line 95, in make_client
+[rank0]:     core = EngineCore(
+[rank0]:            ^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/core.py", line 48, in __init__
+[rank0]:     self._init_kv()
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/core.py", line 75, in _init_kv
+[rank0]:     self.kv: KVManager = self.executor.init_kv()
+[rank0]:                          ^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/executor.py", line 221, in init_kv
+[rank0]:     self.worker.initialize()
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/compute/worker.py", line 104, in initialize
+[rank0]:     model = self._load_model()
+[rank0]:             ^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/compute/worker.py", line 139, in _load_model
+[rank0]:     return model.to(dtype=self.dtype, device=self.device).eval()
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1369, in to
+[rank0]:     return self._apply(convert)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   [Previous line repeated 2 more times]
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/compute/layers/rotary.py", line 50, in _apply
+[rank0]:     self.cos_sin_cache = self.cos_sin_cache.to(torch.float32)
+[rank0]:                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 23.52 GiB of which 19.38 MiB is free. Process 59841 has 21.18 GiB memory in use. Including non-PyTorch memory, this process has 2.31 GiB memory in use. Of the allocated memory 1.43 GiB is allocated by PyTorch, and 35.14 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]:[W927 02:46:04.649624843 ProcessGroupNCCL.cpp:1538] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+===== M DONE 2026-09-27T02:46:05+08:00 =====

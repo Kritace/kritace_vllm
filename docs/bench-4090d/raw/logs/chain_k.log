@@ -1,0 +1,42 @@
+=== chain_j 已结束 2026-09-27T02:44:25+08:00 ===
+[rank0]:   File "/root/spec_acceptance_probe.py", line 65, in <module>
+[rank0]:     engine = Engine(
+[rank0]:              ^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/engine.py", line 67, in __init__
+[rank0]:     self._client = make_client(
+[rank0]:                    ^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/client.py", line 95, in make_client
+[rank0]:     core = EngineCore(
+[rank0]:            ^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/core.py", line 48, in __init__
+[rank0]:     self._init_kv()
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/core.py", line 75, in _init_kv
+[rank0]:     self.kv: KVManager = self.executor.init_kv()
+[rank0]:                          ^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/control/executor.py", line 221, in init_kv
+[rank0]:     self.worker.initialize()
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/compute/worker.py", line 104, in initialize
+[rank0]:     model = self._load_model()
+[rank0]:             ^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/dzyy-vllm/vllm-v6/src/compute/worker.py", line 139, in _load_model
+[rank0]:     return model.to(dtype=self.dtype, device=self.device).eval()
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1369, in to
+[rank0]:     return self._apply(convert)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 928, in _apply
+[rank0]:     module._apply(fn)
+[rank0]:   [Previous line repeated 2 more times]
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 955, in _apply
+[rank0]:     param_applied = fn(param)
+[rank0]:                     ^^^^^^^^^
+[rank0]:   File "/root/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1355, in convert
+[rank0]:     return t.to(
+[rank0]:            ^^^^^
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 23.52 GiB of which 3.38 MiB is free. Process 58193 has 21.32 GiB memory in use. Including non-PyTorch memory, this process has 2.18 GiB memory in use. Of the allocated memory 1.32 GiB is allocated by PyTorch, and 25.15 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]:[W927 02:44:34.596232420 ProcessGroupNCCL.cpp:1538] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+===== K DONE 2026-09-27T02:44:35+08:00 =====

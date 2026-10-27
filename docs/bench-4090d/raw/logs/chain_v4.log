@@ -1,0 +1,22 @@
+===== setup 已结束 2026-09-27T00:39:36+08:00 =====
+!! setup 未成功完成，跳过 v4 实测。日志末尾：
+Requirement already satisfied: nvidia-cusparse-cu12==12.5.8.93 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.5.8.93)
+Requirement already satisfied: nvidia-cusparselt-cu12==0.7.1 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (0.7.1)
+Requirement already satisfied: nvidia-nccl-cu12==2.27.3 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (2.27.3)
+Requirement already satisfied: nvidia-nvtx-cu12==12.8.90 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.90)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.8.93 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (12.8.93)
+Requirement already satisfied: nvidia-cufile-cu12==1.13.1.3 in /root/miniconda3/lib/python3.12/site-packages (from torch->flashinfer-python) (1.13.1.3)
+Collecting shellingham>=1.3.0 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+Collecting rich>=13.8.0 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl (310 kB)
+Collecting annotated-doc>=0.0.2 (from typer->transformers)
+  Using cached https://pypi.tuna.tsinghua.edu.cn/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+Collecting nvidia-cutlass-dsl-libs-cu13==4.8.0 (from nvidia-cutlass-dsl[cu13]>=4.6.2->nvidia-cudnn-frontend>=1.29.0->flashinfer-python)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/df/75/6c52c58fc0fdab223feb9162886736390a6f902183d24df1508ac620a69d/nvidia_cutlass_dsl_libs_cu13-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (92.0 MB)
+     ╸                                        1.5/92.0 MB 15.5 kB/s eta 1:37:25
+ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated the package versions, please update the hashes. Otherwise, examine the package contents carefully; someone may have tampered with them.
+    nvidia-cutlass-dsl-libs-cu13==4.8.0 from https://pypi.tuna.tsinghua.edu.cn/packages/df/75/6c52c58fc0fdab223feb9162886736390a6f902183d24df1508ac620a69d/nvidia_cutlass_dsl_libs_cu13-4.8.0-cp312-cp312-manylinux_2_28_x86_64.whl (from nvidia-cutlass-dsl[cu13]>=4.6.2->nvidia-cudnn-frontend>=1.29.0->flashinfer-python):
+        Expected sha256 463cd7f0c452ffeeecb530a15aeb1b10cbbd2c8da6c5aa2fecf65f836258a732
+             Got        5c77ff863687aaa4be0503c3bd2acec8c09db8a94b14567cebf93d5445f7b1c6
+

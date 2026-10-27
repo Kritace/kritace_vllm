@@ -1,0 +1,13 @@
+===== 等 chain_all 结束 =====
+chain_all 已结束 2026-09-27T02:08:02+08:00
+
+===== DP 同口径单卡对照 (reqs=32, eager/cg) =====
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.39it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.38it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+0.6b-dp1-eager | dp=1 | reqs=32 | 4096 tok | 710.0 tok/s
+Loading weights:   0%|          | 0/1 [00:00<?, ?it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.34it/s]Loading weights: 100%|██████████| 1/1 [00:00<00:00,  3.34it/s]
+KV pool: 64 blocks × 256 tok (1.75 GiB)
+0.6b-dp1-cg | dp=1 | reqs=32 | 4096 tok | 4784.3 tok/s
+NCCL version 2.27.3+cuda12.9
+
+===== AFTER DONE 2026-09-27T02:08:24+08:00 =====
