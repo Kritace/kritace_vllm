@@ -195,8 +195,10 @@ def moe_sum(mid: torch.Tensor, M: int, top_k: int) -> torch.Tensor:
     if mid.is_cuda and cuda_available():
         _ext().moe_sum(mid.view(M, top_k, H), out)
         return out
-    # 纯 torch 回退：维度含义是「每个 token 的 k 条路由相加」，out= 复用缓冲避免再分配。
-    return mid.view(M, top_k, H).sum(dim=1, out=out)
+    # 纯 torch 回退：维度含义是「每个 token 的 k 条路由相加」。
+    # 不能写成 sum(dim=1, out=out)：Tensor.sum 不接受 out=（新版 torch 直接 TypeError）。
+    # 用 copy_ 写回同一块池化缓冲，语义相同、也不额外分配。
+    return out.copy_(mid.view(M, top_k, H).sum(dim=1))
 
 
 # 【最重要的一步：按专家重排 token】grouped GEMM 之前必须先做这件事。
