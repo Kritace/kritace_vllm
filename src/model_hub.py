@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# parents[2]：本文件在 src/ 下 ⇒ 上两级才是仓库根。
+# parents[1]：本文件在 src/ 下 ⇒ 上一级（src 的父目录）就是仓库根。
 # 用 resolve() 取绝对路径，避免相对路径在不同工作目录下解析成不同位置。
 _ROOT = Path(__file__).resolve().parents[1]
 # 只在缺失时插入（幂等），见文件头对 sys.path 的提醒。

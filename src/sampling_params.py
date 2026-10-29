@@ -6,7 +6,7 @@
 # 【为什么要先插 sys.path】实现放在仓库根的 `utils/` 下，而本文件在 `src/` 里，
 # 属于跨目录复用 —— 所以先把它加进 path 再 import。
 #
-# 【⚠️ 一个容易踩的点】`parents[2]` 数的是目录层级，文件挪个位置就会数错；
+# 【⚠️ 一个容易踩的点】`parents[N]` 数的是目录层级，文件挪个位置就会数错；
 # 数错不会报"路径不对"，只会 import 到别的东西（或直接 ImportError）。
 # ============================================================================
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# 仓库根目录：本文件在 src/ 下，所以往上数 2 层。
+# 仓库根目录：本文件在 src/ 下，所以往上数 1 层（parents[1]）。
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))

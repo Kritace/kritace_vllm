@@ -1,4 +1,9 @@
-"""Load utils.* modules into version-local shims."""
+"""把 utils.<name> 的实现导出到 src/ 下的转发 shim。
+
+三个 shim（`src/model_hub.py`、`src/sampling_params.py`、`src/compute/models/loader.py`）
+都调这里的 `export_module()`：把仓库根 `utils/<name>.py` 的 `__all__` 搬进调用方的 globals，
+所以实现只有一份，shim 只是桥。
+"""
 
 from __future__ import annotations
 
