@@ -105,6 +105,25 @@ PATH: list[tuple[str, str]] = [
     ("src.control", "包门面。"),
 ]
 
+# 20 分钟核心路径：只读这些就能把"一次 decode step"和"ZOS 为什么成立"讲完。
+# (模块, 只读哪部分/为什么)
+CORE: list[tuple[str, str]] = [
+    ("src.config", "只扫 `EngineConfig` 的字段（`max_num_seqs`/`num_speculative_tokens`/`moe_backend`/`block_size`），不用逐行。"),
+    ("src.data.sequence", "**账本**：`token_ids`/`num_cached_tokens`/`block_table`/`status` + ZOS 的 `zos_remap`/`zos_start_pos`。"),
+    ("src.data.block_manager", "只读 `can_append` / `may_append` 与 **`can_append_at` / `may_append_at`**（按「位置」算块，ZOS 靠它预留）。"),
+    ("src.data.kv", "`allocate` / `append_slot` / `sync_prefix` / `deallocate` —— 块、前缀、序列三者的粘合层。"),
+    ("src.data.batch", "`_decode_schedule`：注意 `if seq.zos_remap >= 0` 那条分支（`token_ids=[]`、`remap=` 行号）。"),
+    ("src.compute.sampler", "只看它输出什么形状、`_gumbel_sample` 怎么工作，不必抠 kernel 细节。"),
+    ("src.compute.layers.attention", "prefill 走 varlen、decode 走 `flash_attn_with_kvcache`；`try/except` 选真库还是回退。"),
+    ("src.compute.kv_pool", "`alloc_slot` 与池的子张量布局（CUDA Graph 要求地址固定，这是「为什么不能换 buffer」的答案）。"),
+    ("src.compute.batch", "`build_decode`（位置/槽位/csl 怎么算）+ **末尾的 gather/remap** + `_make_pinned_set` 双缓冲。"),
+    ("src.compute.models.qwen3", "只读 `forward` 的骨架：embedding → N 层 → norm → lm_head，中间每层调 attention + MLP。"),
+    ("src.compute.model_runner", "`run_forward` → 采样 → `_stage_samples`（同流 D2H + 双缓冲 slot）；`read_samples` 是唯一阻塞点。"),
+    ("src.control.scheduler", "`schedule()` 的 decode 三分支（blocked / 在途 / 普通）+ `_apply()` 落账；`swap_pending`/`finish` 在文件后半段。"),
+    ("src.control.core", "**循环本体** `step()`：调度 → 发射 → 取结果 → 落账，四段顺序就是 ZOS 的全部秘密。"),
+    ("src.control.executor", "只读 `UniprocExecutor.run` / `read_samples` 与抽象签名 —— 看 `(n_p, n_d, slot)` 怎么从 worker 透传回 core。"),
+]
+
 
 def main() -> None:
     info = scan()
@@ -183,15 +202,49 @@ def main() -> None:
     skip_lines = sum(info[m]["lines"] for m in order
                      if m.startswith("src.spec") or m.startswith("src.moe")
                      or m == "src.compute.models.qwen3_moe")
+    core_set = {m for m, _ in CORE}
+    core_lines = sum(info[m]["lines"] for m, _ in CORE)
+    core_rows = [f"| {i} | `{info[m]['path'] .relative_to(ROOT).as_posix()}` | {info[m]['lines']} | {note} |" for i, (m, note) in enumerate(CORE, 1)]
+
     lines = [
-        "# 09 全量阅读路径（71 个文件，一条线读完）",
+        "# 09 阅读路径（核心 20 分钟 / 全量 66 分钟）",
+        "",
+        f"## 〇、核心路径：14 个文件 / {core_lines:,} 行（约 {core_lines / 250:.0f} 分钟）",
+        "",
+        "只读这些就能把「一次 decode step 怎么走完」和「ZOS 为什么成立」讲清楚。",
+        "其余 57 个文件是工具类、包门面、支线实现，**不用读**（各自需要时再 grep）。",
+        "",
+        "| # | 文件 | 行数 | 读到哪 |",
+        "|---|---|---|---|",
+        *core_rows,
+        "",
+        "### 明确跳过的 57 个",
+        "",
+        "| 类别 | 文件 | 什么时候才需要看 |",
+        "|---|---|---|",
+        "| 工具与 shim | `utils/*`（6 个）、`src/utils/*`（4 个）、`src/model_hub.py`、`src/sampling_params.py`、`src/compute/models/loader.py` | 换个模型 / 换镜像源 / 看计时口径时 |",
+        "| 包门面 | 全部 `__init__.py`（12 个） | 查某个名字从哪导出时 grep |",
+        "| 前缀缓存 | `src/data/prefix/*`（5 个） | 被问到 prefix cache 或 `sync_prefix` 顺序 bug 时（只读 `radix_index`） |",
+        "| 投机支线 | `src/spec/*`（5 个） | 被问到投机解码时（`ngram` → `verify` → `engine`） |",
+        "| MoE 支线 | `src/moe/*`（8 个）+ `models/qwen3_moe.py` | 被问到 MoE/EP 时（`fused` → `cuda`/`triton` 对照） |",
+        "| 并行底座 | `src/distributed/*`（5 个） | 被问到 TP/PP/DP 怎么实现时（`parallel_state` 优先） |",
+        "| 算子细节 | `layers/{ops,activation,rotary,layernorm,linear,vocab_parallel}`（6 个） | 被问到融合算子 / compile / TP 切分时 |",
+        "| 录图 | `src/compute/cuda_graph.py` | 被问到 CUDA Graph 分档捕获时 |",
+        "| 对外接口 | `src/control/{client,engine,mp_client}.py`（3 个） | 被问到 dp>1 / 请求怎么进来时 |",
+        "",        "读完自检：能在白板上画出 `schedule → run → read_samples → finish` 四个框、标出哪一步等 GPU、",
+        "并说出 ZOS 把「等」挪到哪一步、代价是什么（`input_ids` 留空由 GPU gather）。",
+        "",
+        "---",
+        "",
+        "## 一、全量顺序（想通读再看这部分）",
+        "",
         "",
         f"产品代码共 **{len(order)} 个模块 / {total:,} 行**。下面是一条严格按依赖排的线性顺序：",
         "**任何一个文件读到时，它依赖的东西都已经读过了**（`tools/gen_read_path.py` 机械检查，违反就报错）。",
         "",
         f"按 200 行/分钟估：全量约 **{total / 200:.0f} 分钟**；跳过投机与 MoE 两条支线约 **{(total - skip_lines) / 200:.0f} 分钟**。",
         "",
-        "## 分段速查",
+        "### 分段速查",
         "",
         "| 行号 | 段 | 这段在讲什么 | 行数 |",
         "|---|---|---|---|",
@@ -200,12 +253,12 @@ def main() -> None:
         "> 与 `08-依赖图与阅读路径.md` 的分工：08 讲**分层与依赖关系**（包级矩阵、调用链图、六个坑），",
         "> 09 只讲**顺序**——一条包含全部文件的线。先看 08 的 §1/§2 建立地图，再用 09 逐行读。",
         "",
-        "| # | 文件 | 行数 | 读什么 |",
-        "|---|---|---|---|",
+        "| # | 文件 | 行数 | ★ | 读什么 |",
+        "|---|---|---|---|---|",
     ]
     for i, m in enumerate(order, 1):
         p = info[m]["path"].relative_to(ROOT).as_posix()
-        lines.append(f"| {i} | `{p}` | {info[m]['lines']} | {notes[m]} |")
+        lines.append(f"| {i} | `{p}` | {info[m]['lines']} | {'★' if m in core_set else ''} | {notes[m]} |")
 
     lines += [
         "",
