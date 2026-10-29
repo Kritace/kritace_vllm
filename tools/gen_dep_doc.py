@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -239,6 +240,17 @@ flowchart TB
 - 投机：`src/spec/ngram.py` → `src/control/scheduler.py`（`_update_spec_batch`、草稿批走 prefill 通道）→ `src/spec/verify.py`。
 - ZOS：`docs/02-ZOS.md` → `src/control/core.py` 的 `step()` → `src/control/scheduler.py`（`swap_pending`/`finish`）→ `src/data/batch.py:79` → `src/compute/batch.py:236` → `src/compute/model_runner.py`（`_stage_samples`/`read_samples`）。
 
+### 4.5 十二站没有覆盖到的文件（{UNCOV} 个 / {UNCOV_LINES} 行）
+
+十二站是**主干**：它覆盖了 {COV}/{NPROD} 个模块、{COV_LINES} 行（{COV_PCT}%），足以讲清"一次请求怎么变成一次前向"。
+剩下的是三条支线（MoE / 投机 / 分布式）和基础设施（显存池、录图、采样 kernel、工具层、包的 `__init__`），按需补读。
+每组第一行是**建议顺序**，括号里是行数。
+
+{MISSING}
+
+要不要读 `tests/` 和 `bench/`？建议顺序：先 `tests/helpers/engine.py`（66 行，看清 `Engine` 的最小用法），
+再 `bench/zos_matrix.py`（112 行，看清怎么压测），最后 `tests/gpu/*`（需要真卡）。
+
 ## 5. 读代码时容易踩的六个坑
 
 1. **`src/__init__.py` 用 `__getattr__` 懒加载**：`import src` 不会拉起 torch，`from src import Engine` 才会。读包入口时别以为它什么都没干。
@@ -315,6 +327,57 @@ def main() -> None:
                 edges.append(f'  P{i} -->|"{n}"| P{j}')
     pmermaid = "\n".join(nodes + edges)
 
+    # ---- 第四节的覆盖率与"未覆盖清单" ----
+    sec = HEAD.split("## 4. 十二站阅读路径")[1].split("## 5.")[0]
+    files = set(re.findall(r"`(src/[\w/]+\.py)`", sec))
+    dirs = set(re.findall(r"`(src/[\w/]+/)`", sec))
+    abbrev = {"src/control/client.py", "src/control/engine.py", "src/control/mp_client.py"}
+    covered = set()
+    for m in prod:
+        p = info[m]["path"].relative_to(ROOT).as_posix()
+        if p in files or p in abbrev or any(p.startswith(d) for d in dirs):
+            covered.add(m)
+    missing = [m for m in prod if m not in covered]
+    miss_set = set(missing)
+
+    ORDER = {
+        "MoE 支线": ["src.moe.fused", "src.moe.kernels.cuda", "src.moe.kernels.triton",
+                     "src.moe.experts", "src.moe.block", "src.compute.models.qwen3_moe",
+                     "src.moe.parallel"],
+        "投机支线": ["src.spec.ngram", "src.spec.draft", "src.spec.engine", "src.spec.verify"],
+        "分布式底座（TP/PP/DP）": ["src.distributed.parallel_state", "src.distributed.communication_op",
+                                  "src.distributed.control_channel", "src.distributed.utils"],
+        "显存 / 录图 / 采样 kernel": ["src.compute.kv_pool", "src.compute.cuda_graph", "src.compute.sampler"],
+        "工具层（模型下载、环境、计时）": ["src.utils.paths", "src.utils.cuda_env", "src.utils.profiler",
+                                  "utils.model_hub", "utils.model_loader", "utils._loader",
+                                  "utils.run_utils", "utils.sampling_params", "src.model_hub",
+                                  "src.sampling_params", "src.compute.models.loader"],
+        "包的对外契约（扫一眼即可）": ["src", "src.control", "src.data", "src.compute",
+                              "src.compute.models", "src.moe", "src.moe.kernels", "src.spec",
+                              "src.utils", "src.distributed", "utils"],
+    }
+
+    used: set[str] = set()
+    bullets: list[str] = []
+    for title, order in ORDER.items():
+        hits = [m for m in order if m in miss_set]
+        if not hits:
+            continue
+        used.update(hits)
+        chain = " → ".join(f"`{info[m]['path'].relative_to(ROOT).as_posix()}`（{info[m]['lines']}）" for m in hits)
+        bullets.append(f"- **{title}**：{chain}")
+
+    rest = sorted((m for m in missing if m not in used), key=lambda m: -info[m]["lines"])
+    if rest:
+        bullets.append(
+            "- **其他**："
+            + "、".join(f"`{info[m]['path'].relative_to(ROOT).as_posix()}`（{info[m]['lines']}）" for m in rest)
+        )
+    missing_md = "\n".join(bullets)
+
+    cov_lines = sum(info[m]["lines"] for m in covered)
+    prod_lines = sum(info[m]["lines"] for m in prod)
+
     rows = [
         "| 层 | 模块 | 行数 | 依赖（→） | 延迟 import | 被依赖（←） |",
         "|---|---|---|---|---|---|",
@@ -355,6 +418,12 @@ def main() -> None:
         .replace("{NPROD}", str(len(prod)))
         .replace("{LINES}", str(sum(info[m]["lines"] for m in prod)))
         .replace("{PROD_LINES}", f"{sum(info[m]['lines'] for m in prod):,}")
+        .replace("{UNCOV}", str(len(missing)))
+        .replace("{UNCOV_LINES}", f"{sum(info[m]['lines'] for m in missing):,}")
+        .replace("{COV}", str(len(covered)))
+        .replace("{COV_LINES}", f"{cov_lines:,}")
+        .replace("{COV_PCT}", f"{cov_lines / prod_lines * 100:.0f}")
+        .replace("{MISSING}", missing_md)
     )
     if "{LAYER_TABLE}" in text:
         text = text.replace("{LAYER_TABLE}", "\n".join(lt))
