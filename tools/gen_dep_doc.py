@@ -18,6 +18,18 @@ from dep_graph import layers, scan  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "08-依赖图与阅读路径.md"
 
+LABEL = {
+    "src": "src 顶层",
+    "src.control": "control",
+    "src.compute": "compute",
+    "src.data": "data",
+    "src.distributed": "distributed",
+    "src.moe": "moe",
+    "src.spec": "spec",
+    "src.utils": "src/utils",
+    "utils": "utils/",
+}
+
 
 def path_of(mod: str) -> str:
     p = mod.replace(".", "/")
@@ -57,85 +69,44 @@ HEAD = """# 08 文件依赖图与逐行阅读路径
 
 一句话记住分层：**control 不碰张量，compute 不碰调度**；`data/` 是两边共用的 CPU 侧结构；`distributed/` 只在建进程时被执行到。
 
-## 1. 功能分层图
+## 1. 分层总览
 
-按"职责"分层，不是按目录。箭头方向 = 依赖方向（下层不反向依赖上层，这条由 §6 的机械扫描保证）。
+**职责分层**（自上而下，下层不知道上层存在）：
+
+| 层 | 目录 / 文件 | 职责 | 大概行数 |
+|---|---|---|---|
+| 入口 | `src/control/engine.py`、`client.py`、`mp_client.py` | 对外 API；dp=1 就地转发、dp>1 起 ZMQ 副本 | 870 |
+| 循环 | `src/control/core.py` | `step()`：调度 → 发射 → 取结果 → 回灌 | 280 |
+| 执行 | `src/control/executor.py`、`src/compute/worker.py` | 单卡直调 / 多卡 rank0 广播；一进程一卡 | 950 |
+| 推理 | `src/compute/model_runner.py`、`models/*` | 组包、前向、采样、CUDA Graph / compile | 1620 |
+| 显存 | `src/compute/{batch,kv_pool,cuda_graph}.py` | 组包缓冲、KV 显存池、录图 | 680 |
+| 算子 | `src/compute/layers/*`、`kv_ops.py`、`sampler.py` | 单层算子、写 KV、采样 kernel | 1300 |
+| 调度 | `src/control/scheduler.py`、`src/data/*` | 准入、账本、块分配、前缀缓存、跨进程消息 | 1900 |
+| 基础 | `src/config.py`、`distributed/*`、`utils/*`、`spec/*`、`moe/*` | 配置、并行组、模型加载、投机、MoE | 其余 |
+
+**为什么这么分**：`control` 不碰张量，`compute` 不碰调度 —— 这条线决定了改代码时该动哪边。
+`data/` 是两边共用的 CPU 侧结构（`Sequence`、`ScheduledBatch`），`distributed/` 只在建进程时被执行到。
+
+## 1.1 包级依赖矩阵
+
+行 = 谁 import，列 = 被 import；数字是**模块对**的数量（`src.control.scheduler → src.data.kv` 算 1）。
+只统计模块顶层的 eager import（函数体里的延迟 import 不算，见 §5 坑 2）。
+
+{MATRIX}
+
+读法：`src.control` 依赖 `src.data`（{C_D} 处）、`src.compute`（{C_C} 处），反向一处都没有 —— 这就是"上层依赖下层"的量化形式。
+被引用最多的三个包：{INBOUND}。"src 顶层"是 `src/config.py`、`src/model_hub.py`、`src/sampling_params.py` 这几个散装模块的合集 —— 所有层都要读配置，所以它排第一，这不是设计缺陷。
+
+## 1.2 包级依赖图
 
 ```mermaid
-flowchart BT
-  subgraph ENTRY["入口层：对外 API"]
-    E1["control.engine<br/>门面"]
-    E2["control.client<br/>dp=1 就地转发"]
-    E3["control.mp_client<br/>dp>1 ZMQ 副本"]
-  end
-  subgraph LOOP["循环层：一步的编排"]
-    C1["control.core<br/>step()"]
-  end
-  subgraph EXEC["执行层：进程与卡"]
-    X1["control.executor<br/>Uniproc / Multiproc"]
-    X2["compute.worker<br/>一进程一卡"]
-  end
-  subgraph STEP["推理层：一步怎么算"]
-    S1["compute.model_runner<br/>组包 + 前向 + 采样"]
-    S2["compute.models.qwen3 / qwen3_moe<br/>28 层组装"]
-    S3["moe.block / experts / fused"]
-  end
-  subgraph MEM["显存层：缓冲与图"]
-    M1["compute.batch<br/>组包缓冲"]
-    M2["compute.kv_pool<br/>KV 显存池"]
-    M3["compute.cuda_graph<br/>录图 / 重放"]
-  end
-  subgraph OPS["算子层：单层"]
-    O1["compute.layers.attention"]
-    O2["compute.layers.linear / vocab_parallel"]
-    O3["compute.layers.layernorm / rotary / ops"]
-    O4["compute.kv_ops / compute.sampler"]
-  end
-  subgraph SCHED["调度层：CPU 账本"]
-    K1["control.scheduler<br/>schedule / finish"]
-    K2["data.sequence<br/>请求状态机"]
-    K3["data.kv + data.block_manager<br/>块分配"]
-    K4["data.prefix/*<br/>前缀缓存"]
-    K5["data.batch<br/>跨进程消息"]
-  end
-  subgraph BASE["基础层"]
-    B1["config"]
-    B2["distributed/*<br/>并行组 / 通信"]
-    B3["utils/* + src.utils<br/>模型加载 / 环境"]
-    B4["spec/*<br/>投机草稿与验证"]
-    B5["moe.parallel + moe.kernels/*"]
-  end
-  E1 --> E2 --> E3
-  E1 --> C1
-  E3 --> C1
-  C1 --> X1 --> X2
-  C1 --> K1
-  X2 --> S1
-  S1 --> S2 --> S3
-  S1 --> M1
-  S1 --> M2
-  S1 --> M3
-  S1 --> O1
-  S2 --> O2
-  S2 --> O3
-  S1 --> O4
-  K1 --> K2
-  K1 --> K3
-  K3 --> K4
-  K1 --> K5
-  K1 --> B4
-  S3 --> B5
-  X2 --> B2
-  S1 --> B2
-  K5 --> K2
-  K3 --> B1
-  X2 --> B3
+flowchart LR
+{PMERMAID}
 ```
 
-**怎么用这张图**：想把某段逻辑改掉，先在图上定位它在哪层，再看 §3 的反向索引找到具体文件；
-读代码时如果发现下层在 import 上层，那一定是延迟 import 或在破环（§5 坑 2）。
+（同一个矩阵的画法。粗线=依赖多，细线=只一两处引用。`utils/` 是 vendored 的模型加载工具，只被 `src` 的 shim 引用。）
 
-机器统计的分层规模（层号由 import 关系算出，会被 `__init__` 重导出抬高，与上图的分组不必一一对应）：
+机器算出的细粒度分层（层号 = 最长依赖路径，会被 `__init__` 的重导出抬高，和上面表格的"职责层"不必一一对应）：
 
 {LAYER_TABLE}
 
@@ -299,6 +270,50 @@ def main() -> None:
     for m in prod:
         by_lvl[mod_lvl[m]].append(m)
 
+    # ---- 包级依赖矩阵 ----
+    PKGS = ["src", "src.control", "src.compute", "src.data", "src.distributed",
+            "src.moe", "src.spec", "src.utils", "utils"]
+
+    def pkg(mod: str) -> str:
+        for p in sorted(PKGS, key=len, reverse=True):
+            if mod == p or mod.startswith(p + "."):
+                return p
+        return "?"
+
+    mat: dict[tuple[str, str], int] = defaultdict(int)
+    for m in prod:
+        for d in info[m]["eager"] & known:
+            a, b = pkg(m), pkg(d)
+            if a != b and a in PKGS and b in PKGS:
+                mat[(a, b)] += 1
+
+    head = "| 谁 ↓ / 被谁 → | " + " | ".join(LABEL[p] for p in PKGS) + " |"
+    sep = "|---|" + "---|" * len(PKGS)
+    lines = [head, sep]
+    for a in PKGS:
+        cells = []
+        for b in PKGS:
+            v = mat.get((a, b), 0)
+            cells.append("—" if v == 0 else str(v))
+        lines.append(f"| **{LABEL[a]}** | " + " | ".join(cells) + " |")
+    matrix = "\n".join(lines)
+
+    inbound = {p: sum(mat[(a, p)] for a in PKGS) for p in PKGS}
+    top3 = sorted(((v, p) for p, v in inbound.items()), reverse=True)[:3]
+    inbound_txt = "、".join(f"`{LABEL[p]}`（{v} 处）" for v, p in top3)
+
+    nodes = []
+    for i, p in enumerate(PKGS):
+        mods = [m for m in prod if pkg(m) == p]
+        nodes.append(f'  P{i}["{p.replace("src.", "src/")}<br/>{len(mods)} 模块 / {sum(info[m]["lines"] for m in mods)} 行"]')
+    edges = []
+    for i, a in enumerate(PKGS):
+        for j, b in enumerate(PKGS):
+            n = mat.get((a, b), 0)
+            if n:
+                edges.append(f'  P{i} -->|"{n}"| P{j}')
+    pmermaid = "\n".join(nodes + edges)
+
     rows = [
         "| 层 | 模块 | 行数 | 依赖（→） | 延迟 import | 被依赖（←） |",
         "|---|---|---|---|---|---|",
@@ -330,6 +345,11 @@ def main() -> None:
 
     text = (
         HEAD.replace("{TABLE}", "\n".join(rows))
+        .replace("{MATRIX}", matrix)
+        .replace("{PMERMAID}", pmermaid)
+        .replace("{INBOUND}", inbound_txt)
+        .replace("{C_D}", str(mat.get(("src.control", "src.data"), 0)))
+        .replace("{C_C}", str(mat.get(("src.control", "src.compute"), 0)))
         .replace("{LAYER_TABLE}", "\n".join(lt))
         .replace("{NPROD}", str(len(prod)))
         .replace("{LINES}", str(sum(info[m]["lines"] for m in prod)))
