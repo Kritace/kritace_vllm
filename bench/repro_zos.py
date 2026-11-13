@@ -11,6 +11,10 @@
 
     PYTHONPATH=. python bench/repro_zos.py                  # 默认 3 轮，丢掉第 1 轮
     PYTHONPATH=. python bench/repro_zos.py --rounds 4 --n 8 --max-tokens 32
+
+    # 4 GB 显卡：上下文和 KV 池必须一起压小，否则加载完权重就没地方开池
+    PYTHONPATH=. python bench/repro_zos.py --n 1 --max-tokens 32 \
+        --blocks 4 --context-len 512
 """
 from __future__ import annotations
 
@@ -31,11 +35,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 CASE_RE = re.compile(r"mode=(\d+) steps=(\d+) .*elapsed=([\d.]+)s sha=([0-9a-f]+)")
-ZOS_RE = re.compile(r"calls=(\d+) ready=(\d+) \(([\d.]+)%\) total_wait=([\d.]+)ms")
+# 注意括号里除了百分比还有中文说明（"100.0% 无需等待"），
+# 旧写法 `\(([\d.]+)%\)` 要求 % 紧跟 )，永远匹配不上 → ready% 恒为 None。
+ZOS_RE = re.compile(r"calls=(\d+) ready=(\d+) \(([\d.]+)%[^)]*\) total_wait=([\d.]+)ms")
 GPU_RE = re.compile(r"steps=(\d+) gpu_total=([\d.]+)ms avg_gpu=([\d.]+)ms")
 
 
-def run_once(mode: int, n: int, max_tokens: int, blocks: int) -> dict:
+def run_once(
+    mode: int, n: int, max_tokens: int, blocks: int, context_len: int
+) -> dict:
     env = dict(os.environ)
     env.update(PYTHONPATH=ROOT, KRITACE_ZOS=str(mode), KRITACE_ZOS_STATS="1", KRITACE_ZOS_GPU="1")
     cmd = [
@@ -45,8 +53,12 @@ def run_once(mode: int, n: int, max_tokens: int, blocks: int) -> dict:
         "--n", str(n),
         "--max-tokens", str(max_tokens),
         "--blocks", str(blocks),
+        # 上下文必须一起透传：zos_matrix 的默认值是 2048，而 4 GB 卡加载完权重
+        # 只剩几百 MiB，开不出 KV 池（直接在分配 KV 时 OOM）。
+        "--context-len", str(context_len),
     ]
-    out = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True).stdout
+    proc = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    out = proc.stdout
     rec = {"mode": mode, "sha": "?", "steps": 0, "elapsed": 0.0,
            "ready_pct": None, "wait_ms": None, "avg_gpu_ms": None}
     if m := CASE_RE.search(out):
@@ -59,6 +71,18 @@ def run_once(mode: int, n: int, max_tokens: int, blocks: int) -> dict:
         rec["step_ms"] = rec["elapsed"] * 1000.0 / rec["steps"]
         if rec["avg_gpu_ms"] is not None:
             rec["bubble_ms"] = rec["step_ms"] - rec["avg_gpu_ms"]
+    else:
+        # 子进程没有产出可解析结果（缺依赖 / OOM / 参数非法……）。
+        # 必须把它的输出尾部打出来：否则 capture_output 会把真实原因吞掉，
+        # 最后只在汇总表的格式化处崩一个 TypeError，完全误导排查方向。
+        tail = (proc.stderr or proc.stdout or "<子进程无输出>").strip().splitlines()[-15:]
+        print(
+            f"\n[repro-zos] KRITACE_ZOS={mode} 子进程未产出可解析结果，"
+            f"returncode={proc.returncode}，输出尾部：",
+            flush=True,
+        )
+        for line in tail:
+            print("    " + line, flush=True)
     return rec
 
 
@@ -68,6 +92,8 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=4)
     ap.add_argument("--max-tokens", type=int, default=8)
     ap.add_argument("--blocks", type=int, default=48)
+    ap.add_argument("--context-len", type=int, default=2048,
+                    help="上下文上限（透传给 zos_matrix）；4 GB 显存请给 512")
     ap.add_argument("--drop-first", type=int, default=1,
                     help="丢掉前几轮：GPU 时钟爬坡时单轮能差 3 倍")
     args = ap.parse_args()
@@ -75,7 +101,9 @@ def main() -> None:
     rows = []
     for r in range(1, args.rounds + 1):
         for mode in (0, 1):                      # 交错：A B A B
-            rec = run_once(mode, args.n, args.max_tokens, args.blocks)
+            rec = run_once(
+                mode, args.n, args.max_tokens, args.blocks, args.context_len
+            )
             rec["round"] = r
             rows.append(rec)
             print(f"  round {r}  KRITACE_ZOS={mode}  step={rec.get('step_ms', 0):.1f} ms  "
@@ -89,16 +117,24 @@ def main() -> None:
         vals = [r[key] for r in used if r["mode"] == mode and r.get(key) is not None]
         return statistics.median(vals) if vals else None
 
+    # 没有数据时打印 n/a 而不是崩在格式化上（例如子进程全部失败）。
+    def fmt(mode: int, key: str, spec: str) -> str:
+        v = med(mode, key)
+        return "n/a" if v is None else format(v, spec)
+
     print("| 指标 | KRITACE_ZOS=0（同步） | KRITACE_ZOS=1（零开销） |")
     print("|---|---|---|")
-    print(f"| 步墙钟（含 GPU 降频，别直接比） | {med(0,'step_ms'):.1f} ms | {med(1,'step_ms'):.1f} ms |")
-    print(f"| GPU 忙时 | {med(0,'avg_gpu_ms'):.1f} ms | {med(1,'avg_gpu_ms'):.1f} ms |")
-    print(f"| **每步气泡 = 墙钟 − GPU 忙** | **{med(0,'bubble_ms'):+.2f} ms** | **{med(1,'bubble_ms'):+.2f} ms** |")
-    print(f"| read 不用等的比例 | {med(0,'ready_pct'):.1f}% | {med(1,'ready_pct'):.1f}% |")
-    print(f"| 累计等待 | {med(0,'wait_ms'):.1f} ms | {med(1,'wait_ms'):.1f} ms |")
+    print(f"| 步墙钟（含 GPU 降频，别直接比） | {fmt(0,'step_ms','.1f')} ms | {fmt(1,'step_ms','.1f')} ms |")
+    print(f"| GPU 忙时 | {fmt(0,'avg_gpu_ms','.1f')} ms | {fmt(1,'avg_gpu_ms','.1f')} ms |")
+    print(f"| **每步气泡 = 墙钟 − GPU 忙** | **{fmt(0,'bubble_ms','+.2f')} ms** | **{fmt(1,'bubble_ms','+.2f')} ms** |")
+    print(f"| read 不用等的比例 | {fmt(0,'ready_pct','.1f')}% | {fmt(1,'ready_pct','.1f')}% |")
+    print(f"| 累计等待 | {fmt(0,'wait_ms','.1f')} ms | {fmt(1,'wait_ms','.1f')} ms |")
 
     shas = {r["sha"] for r in used}
-    print(f"\n**正确性**：{len(shas)} 种 sha → {'逐 token 一致 (OK)' if len(shas) == 1 else '不一致 (FAIL)'}")
+    if shas == {"?"}:
+        print("\n**正确性**：无有效结果（见上面的子进程输出）")
+    else:
+        print(f"\n**正确性**：{len(shas)} 种 sha → {'逐 token 一致 (OK)' if len(shas) == 1 else '不一致 (FAIL)'}")
 
     b0, b1 = med(0, "bubble_ms"), med(1, "bubble_ms")
     if b0 is not None and b1 is not None:

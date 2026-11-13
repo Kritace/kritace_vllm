@@ -1,0 +1,16 @@
+Generating SQLite file bench/3050test/nsys/zos0.sqlite from bench/3050test/nsys/zos0.nsys-rep
+Processing [bench/3050test/nsys/zos0.sqlite] with [/opt/nvidia/nsight-systems/2025.3.2/host-linux-x64/reports/nvtx_sum.py]... 
+
+ ** NVTX Range Summary (nvtx_sum):
+
+ Time (%)  Total Time (ns)  Instances    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)    Style              Range           
+ --------  ---------------  ---------  ------------  ------------  ----------  ----------  ------------  -------  ---------------------------
+     80.1       8032951367          8  1004118920.9    65532358.5    62351986  7485775438  2619171719.7  PushPop  :zos.launch                
+     17.0       1701475676          1  1701475676.0  1701475676.0  1701475676  1701475676           0.0  PushPop  NCCL:ncclCommInitRankConfig
+      2.8        281566039          1   281566039.0   281566039.0   281566039   281566039           0.0  PushPop  NCCL:ncclCommDestroy       
+      0.1          9179448          8     1147431.0     1272091.5      109268     1692706      461288.4  PushPop  :zos.read                  
+      0.0          2713861          1     2713861.0     2713861.0     2713861     2713861           0.0  PushPop  NCCL:ncclCommFinalize      
+      0.0          1693368          8      211671.0       17728.5       15329     1360946      470227.8  PushPop  :zos.schedule              
+      0.0           290321          8       36290.1       16466.0       14538      162198       51145.0  PushPop  :zos.finish                
+      0.0            18215          1       18215.0       18215.0       18215       18215           0.0  PushPop  NCCL:ncclMemFree           
+
