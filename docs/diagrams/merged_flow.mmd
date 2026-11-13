@@ -1,0 +1,179 @@
+%% 合并版 v2：v7 的「CPU/GPU 泳道 + 六处接口」骨架 × v6 的「四卡切分 + 投机一轮」
+%% 图源：本文件。产物：推理全流程图-合并版.{mmd,svg,html}（run_render.ps1 + build_flow_viewer.py）
+%% 约定：方框 = 一步；蓝底 = 跨卡通信；橙底 = 跨侧交接；绿底 = 四卡分工；红底 = 最容易讲错
+flowchart TB
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px,color:#1b2b45
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px,color:#5a3a12
+    classDef card fill:#f2f7f2,stroke:#4d7c4d,stroke-width:1.3px,color:#213d21
+    classDef warn fill:#fdf1f0,stroke:#b3564f,stroke-width:1.3px,color:#6d2a26
+
+    subgraph CPU1["ⓒ CPU 侧① 调度与组批（control/，纯 Python，不碰张量）"]
+        direction TB
+        E1["Engine.add_request<br/>prompt → token_ids → Sequence → waiting 队列"]
+        E2["Scheduler.schedule()<br/>先 decode，再 prefill（chunk 按预算切）"]
+        E3{"这一步的形态？"}
+        E3d["普通 decode：n_new = 1"]
+        E3p["普通 prefill / chunk：n_new = 本 chunk 的 token 数"]
+        E3s["投机：先出草稿"]
+        E4{"预算 + KV 够吗？<br/>tokens_used + n_new ≤ 8192 ∧ kv.can_append_n(seq, n_new)<br/>（投机按 K+1 个位置占，不是 K）"}
+        E5["不够 → preempt 队尾序列<br/>丢块(publish=False) + 丢草稿 + 回 waiting"]
+        E6["记账（只在 CPU 账本里）<br/>num_scheduled_tokens / spec_draft_ids / kv.may_append_n"]
+        E7["组 6 张表 → pinned memory<br/>input_ids · positions · slot_mapping(-1 填充) · cache_seqlens · cu_seqlens_q/k · block_tables"]
+        E1 --> E2 --> E3
+        E3 -->|"decode"| E3d
+        E3 -->|"prefill"| E3p
+        E3 -->|"有草稿"| E3s
+        E3d --> E4
+        E3p --> E4
+        E3s --> E4
+        E4 -->|"不够"| E5
+        E4 -->|"够"| E6
+        E6 --> E7
+    end
+
+    subgraph SPU["⑰ 投机上半场（CPU）：出草稿 → 构造 K+1 个验证位置"]
+        direction TB
+        S1["① 草稿从哪来：n-gram 拿末尾几个 token 查历史表，命中就抄后面的<br/>它根本不跑模型 ⇒ 没有草稿 KV，也拿不出草稿概率 q"]
+        S2["② 验证输入 = [最后一个 token, t₁ … t_K]，共 K+1 个位置<br/>把最后一个 token 重复一遍 ⇒ 输出位置 i 就直接对应「草稿 i 该不该接受」"]
+        S3["③ 定宽补齐：width = max(K) + 1，同批空位 pad = −1<br/>它借 prefill 通道 —— 只有变长注意力能一次算 K+1 个 query"]
+        S1 --> S2 --> S3
+    end
+
+    H1["交接① H2D：pinned → 显存<br/>dst.copy_(src, non_blocking=True)，拷完立刻返回"]:::io
+
+    subgraph GPU["ⓖ GPU 侧② 一次前向（compute/）—— 四张卡跑同一批数据"]
+        direction TB
+        RF["ModelRunner.run_forward<br/>⚠ 顺序固定：先 decode，后 prefill（回写账本同序）"]
+        subgraph DEC["decode 通道：每序列 1 个 query"]
+            direction TB
+            D1{"enforce_eager = false ∧ bs ≤ max_bs ？"}
+            D2["cuda_graph_runner.replay(bs)<br/>按 _pad_bs 补到固定形状，pad 槽 slot = −1（kernel 直接跳过）"]
+            D3["eager：self.model(input_ids, positions, AttnInputs, it)"]
+        end
+        subgraph PRE["prefill 通道：整段 prefill / chunk / 投机验证"]
+            direction TB
+            P1{"首 chunk ∧ 无前缀命中 ∧ torch_compile ？"}
+            P2["prefill_fn(...)：编译图只收 5 参<br/>（无 cu_seqlens_k / block_tables ⇒ 只对首 chunk 安全）"]
+            P3["eager varlen：cu_seqlens_q/k + max_seqlen + block_tables"]
+        end
+        LAY["两条通道汇合到同一个 self.model(...)<br/>28 层，按 PP 切成两段、每段 14 层"]
+        subgraph LYR["每层骨架（28 层共用；每卡只跑自己那一段、只用自己的头）"]
+            direction TB
+            L1["① input_layernorm(hidden, residual)<br/>fused 残差：吃 (x, res) 吐 (normed, 新 res)"]
+            L2["② qkv_proj 融合 GEMM：1024 → 2048 + 1024 + 1024 → split q / k / v"]
+            L3["③ q_norm / k_norm：RMSNorm(128)，归一化轴是 head_dim<br/>RoPE(positions, q, k) —— v 不转"]
+            L4["④ Attention.forward → torch.ops.vllm.attention（外挂图见右下）"]
+            L5["⑤ o_proj：2048 → 1024（行并行 ⇒ 部分和 ⇒ allreduce ①）"]
+            L6["⑥ post_attention_layernorm(hidden, residual)"]
+            L7{"⑦ 前馈走哪条分支？"}
+            L8a["dense MLP（Qwen3-0.6B）：gate_up 1024→2×3072 → SiLU(gate)⊙up → down 3072→1024（allreduce ②）"]
+            L8b["MoE（qwen3_moe.py + src/moe/）：router → top-k → 重新归一化 → 命中专家 SwiGLU 加权和（allreduce ②）"]
+            L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7
+            L7 -->|"dense"| L8a
+            L7 -->|"MoE"| L8b
+        end
+        subgraph ATTN["注意力内部（attention.py + kv_ops.py）"]
+            direction TB
+            A1["① store_kvcache(k, v, k_cache, v_cache, slot_mapping)<br/>Triton kernel：slot == −1 直接 return"]
+            A2{"② is_prefill ？"}
+            A3["prefill / 投机验证：有历史就从整池读<br/>flash_attn_varlen_func(causal=True, block_table=...)"]
+            A4["decode：flash_attn_with_kvcache(q[:, None], k_cache, v_cache,<br/>cache_seqlens, block_table)"]
+            A1 --> A2
+            A2 -->|"是（S 可 > 1）"| A3
+            A2 -->|"否（S = 1）"| A4
+        end
+        SHP["同一套 self.model，三种形状（形状在组表时就定下来）<br/>prefill：变长，出口只取每序列最后 1 个位置（last = cu_seqlens_q[i+1] − 1）<br/>decode：S = 1，走 CUDA Graph<br/>投机验证：定宽 [bs, width]，出口【每个位置】都要用"]
+        O1["末层 RMSNorm（只在末 PP 段存在）"]
+        O2["compute_logits：lm_head 1024 → 151936<br/>只对需要的位置算（投机时这一步也放大 K+1 倍）"]
+        O3["Sampler：T → top-k → top-p → min-p<br/>all_greedy ⇒ 直接 argmax，连 logits 都不算"]
+        O4{"本步哪条通道？"}
+        O5["decode：取唯一位的 id"]
+        O6["普通 prefill：只取每序列最后 1 个位置"]
+        O7["投机验证：取【每个位置】的 argmax<br/>定宽 [bs, width] → view(−1)"]
+        RF -->|"先"| D1
+        RF -->|"后"| P1
+        D1 -->|"是"| D2
+        D1 -->|"否"| D3
+        P1 -->|"是"| P2
+        P1 -->|"否"| P3
+        D2 --> LAY
+        D3 --> LAY
+        P2 --> LAY
+        P3 --> LAY
+        LAY --> LYR
+        L4 -.-> A1
+        L8a --> O1
+        L8b --> O1
+        O1 --> O2 --> O3 --> O4
+        O4 -->|"decode"| O5
+        O4 -->|"prefill"| O6
+        O4 -->|"投机验证"| O7
+    end
+
+    subgraph PAR["Ⓟ 四卡怎么切（TP = 2 × PP = 2）：层切两段、头切两份、词表切两份"]
+        direction TB
+        K0["卡 0 · 段 0 · TP rank 0<br/>层 0–13 ｜ Q 头 0–7 ｜ KV 头 0–3 ｜ 词表前半"]:::card
+        K1["卡 1 · 段 0 · TP rank 1<br/>层 0–13 ｜ Q 头 8–15 ｜ KV 头 4–7 ｜ 词表后半"]:::card
+        K2["卡 2 · 段 1 · TP rank 0（末段：★ 只有它采样）<br/>层 14–27 ｜ Q 头 0–7 ｜ KV 头 0–3"]:::card
+        K3["卡 3 · 段 1 · TP rank 1（不采样，算完等下一轮）<br/>层 14–27 ｜ Q 头 8–15 ｜ KV 头 4–7"]:::card
+        NAR["每层 2 次 allreduce(SUM)，集合通信没有主卡（两卡各自发起同一条）<br/>① o_proj（按输入维切 ⇒ 部分和）　② down_proj / 专家合并<br/>一次前向 = 2 × 28 + 1 = 57 次（+1 是 embedding 的词表并行求和）<br/>⚠ 没有「全局方差归一化」那一次 —— 那是另一个项目（MiniMax Lightning）的设计"]:::comm
+        NPP["PP 点对点（只有正向、不经 CPU）：卡 0 → 卡 2、卡 1 → 卡 3<br/>送两项 h 与 residual；采样结果另走控制通道（Gloo，阻塞）回 driver"]:::comm
+        NAX["另外两个轴（不改变上面四卡的分工）<br/>DP：dp_size 份完整引擎副本，副本之间零通信<br/>EP：在现有 TP rank 上切专家轴，合并仍是一次 allreduce"]:::comm
+        NSPD["本机实测（2 × RTX 4090D，无 NVLink，P2P = NS）<br/>allreduce 8 KB = 76.7 µs；0.6B 每步 ≈ 8 KB × 2 × 28 = 224 KB ⇒ 通信 ≈ 2.15 ms<br/>⇒ TP = 2 反而更慢：eager 37.9 vs 单卡 49.5 tok/s"]:::warn
+        K0 --> NAR
+        K1 --> NAR
+        K2 --> NAR
+        K3 --> NAR
+        K0 --> NPP
+        K1 --> NPP
+    end
+
+    H2["交接② 异步 D2H<br/>_copy_stream 把 id 拷进 pinned，拷完立刻返回（全流程唯一的异步优化）"]:::io
+    H3["交接③ 同步点<br/>read_samples 里 _copy_event.synchronize() —— CPU 唯一真正阻塞在 GPU 的地方"]:::io
+
+    subgraph SPD["⑰ 投机下半场（CPU）：判接受 → 只推进 j + 1 个 token"]
+        direction TB
+        S5["④ 判接受（贪心版）：j = 从头起连续匹配的草稿个数，0 ≤ j ≤ K<br/>emitted = draft[: j] + [argmax[j]] ⇒ 本轮产出 j + 1 个"]
+        S6["⑤ 账本只推进 j + 1，不回滚<br/>已写进 KV 的 K − j 个无效槽不回收、不搬家，靠下一步从新的 num_cached_tokens 起算覆盖掉"]
+        S7["⚠ 发布前缀索引必须显式传 j + 1（默认会传 K+1）<br/>⇒ 块边界错位 ⇒ 后来的请求会命中与真实文本不符的前缀"]:::warn
+        S5 --> S6 --> S7
+    end
+
+    subgraph CPU2["ⓒ CPU 侧③ 取回 → 回写账本 → 决定下一步（control/scheduler.py）"]
+        direction TB
+        R1["_update_batch（普通通道）<br/>num_cached_tokens += num_scheduled_tokens（decode 1 / prefill 一整段）"]
+        R2["_update_spec_batch（投机通道）<br/>num_cached_tokens += j + 1；sync_prefix 也传 j + 1"]
+        R3["判结束：命中 EOS / 到 max_tokens ⇒ FINISHED + deallocate(publish=True)"]
+        R4["发布满块进前缀索引（半截块不许进：内容下一步还会变）"]
+        R5["★ 已完成的序列必须从 running 里摘掉<br/>（漏了 ⇒ 组包断言 len(token_ids) == num_cached_tokens + 1 失败）"]:::warn
+        R6["EngineCoreOutput(new_token_ids, is_finished)"]
+        R1 --> R3
+        R2 --> R3
+        R3 --> R4 --> R5 --> R6
+    end
+
+    subgraph CACHE["两套账本：数据在 GPU、账本在 CPU"]
+        direction TB
+        C1["ⓖ GPU：KV 池 pool[2, 28, blocks × 256, 8, 128]<br/>每 token 每层 2 × 8 × 128 × 2 B = 4 KiB"]
+        C2["ⓒ CPU：BlockManager / KVManager / 前缀索引<br/>block_table 是纯 Python 整数列表：逻辑位置 → 物理块号"]
+    end
+
+    H4["交接⑥ 流出：这一步的增量 token<br/>每步都发生（真实服务在这里流式返回；run.py 是攒到结束一次打印）"]:::io
+
+    E7 ==>|"交接①"| H1
+    S3 ==>|"K+1 个位置一起下来"| H1
+    H1 ==>|"这一批交给四张卡"| RF
+    O5 ==>|"交接②"| H2
+    O6 ==> H2
+    O7 ==> H2
+    H2 ==> H3
+    H3 ==>|"token 号回到 CPU"| R1
+    H3 ==> S5
+    S7 -.->|"⑥ 流出的是 j + 1 个 token（用户看到一次蹦出好几个字）"| H4
+    S6 --> R2
+    R6 -.->|"④ 回流：has_unfinished ⇒ 下一步 decode 的 S = 1"| E2
+    R6 -.->|"⑥ 流出"| H4
+    E6 -.->|"占位（账本）"| C2
+    A1 -.->|"写 cache[slot·D : slot·D+D]"| C1
+    A4 -.->|"读：block_table + cache_seqlens"| C1
+    LYR -.->|"每卡只跑自己那 14 层、只用自己的头"| K0

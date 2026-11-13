@@ -1,0 +1,69 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    TOP(["图与编译的边界：什么时候能叠加、什么时候互相拖累、以及怎么把它看见"]):::io
+
+    subgraph STACK["① 叠加：两个杠杆各压一项，所以能同时用"]
+        direction TB
+        S0["$$\begin{gathered}\text{一步的时间只有两项}\\\\T_{\text{step}}=T_{\text{调度}}+T_{\text{计算}}\end{gathered}$$"]
+        S1["$$\begin{gathered}\text{图压的是左边那一项（只有 decode）}\\\\T_{\text{调度}}\ \text{里绝大部分是「提交」：每步约 }2500\ \text{次}\\\\N_{\text{launch}}\to 1\end{gathered}$$"]
+        S2["$$\begin{gathered}\text{编译压的是右边那一项里的「个数」（只有 prefill）}\\\\T_{\text{计算}}\ \text{不变，但 kernel 个数与显存往返变少}\\\\646\to 537\ \text{个 kernel}\end{gathered}$$"]
+        S3["$$\begin{gathered}\text{能叠加的判据}\\\\\text{各自作用的那一项，在总时间里都还占显著比例}\\\\\text{若某一项已经被压到可忽略，叠加就是白做}\end{gathered}$$"]
+        S4["$$\begin{gathered}\text{实测四种组合（Qwen3-0.6B · 单卡 RTX 4090D · 单请求）}\\\\\text{eager }49.5\quad\text{cg }449.7\quad\text{compile }50.3\quad\text{cg+compile }446.8\ (\text{tok/s})\end{gathered}$$"]
+        S5["$$\begin{gathered}\text{各自算各的：}S_{\text{cg}}=9.03,\ S_{\text{compile}}=4.81\\\\\text{但两者作用在不同指标上，不能直接相乘}\\\\446.8/49.5=9.03\ \checkmark\quad\text{TTFT }25.76\to 5.36\ \text{ms}\ \checkmark\end{gathered}$$"]
+        S6["$$\begin{gathered}\text{【TTFT 与 decode 是两个指标】}\\\\\text{读法：图只动 decode 那一列，编译只动 TTFT 那一列}\\\\\text{两边都开 = 两列各自变好，互不侵占}\end{gathered}$$"]
+        S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+
+    subgraph PAR["② 与四路并行：谁在图里、谁必须留在图外"]
+        direction TB
+        P0["$$\begin{gathered}\text{判据只有一条：这一步里会不会「阻塞主机」}\\\\\text{不阻塞}\Rightarrow\text{可以进图};\quad\text{阻塞}\Rightarrow\text{只能留在图外}\end{gathered}$$"]
+        P1["$$\begin{gathered}\text{【TP】集合通信可以进图}\\\\\text{发起后立刻返回，工作排进 NCCL 自己的流，顺序固定}\\\\\text{所以图内的 all-reduce 与普通 kernel 没有区别}\end{gathered}$$"]:::comm
+        P2["$$\begin{gathered}\text{TP 的意外收获}\\\\\text{消掉 GEMM 提交开销的同时，也消掉集合通信的提交开销}\\\\\Rightarrow\text{TP=2 的图倍数 }10.6\times\text{ 反而高于单卡 }9.1\times\end{gathered}$$"]:::comm
+        P3["$$\begin{gathered}\text{【PP】点对点收发不能进图}\\\\\text{底层是异步收发，但函数返回前要把每一次都等到完成}\\\\\Rightarrow\text{对图外的调用方是【同步阻塞】的}\end{gathered}$$"]:::comm
+        P4["$$\begin{gathered}\text{于是变成分段图（piecewise）}\\\\\text{图外 recv}\ \to\ \text{图内 forward（读写固定缓冲）}\ \to\ \text{图外 send}\\\\\text{中间那一段才是图，两头留在外面}\end{gathered}$$"]:::comm
+        P5["$$\begin{gathered}\text{代价：每卡只算一半层，可重叠的活本来就少}\\\\\text{PP=2 的图倍数只有 }4.2\times\text{（对 单卡 }9.1\times\text{）}\\\\\text{单请求 batch=1 时 PP 本来就没有流水线气泡}\end{gathered}$$"]
+        P6["$$\begin{gathered}\text{【DP】天然隔离，不需要商量}\\\\\text{每个副本一个独立 Engine，各有自己的进程与显存}\\\\\text{实测 1.88×（2 副本 · 每卡 4784}\to\text{8260 tok/s）}\end{gathered}$$"]
+        P7["$$\begin{gathered}\text{【EP】和图是负交互}\\\\\text{eager 下：}29.29\to 30.01\ (\text{几乎无差别})\\\\\text{图下：}201.04\to 161.33\ (-19.8\%)\\\\\text{同一个因素，在不同模式下符号都反了}\end{gathered}$$"]
+        P8["$$\begin{gathered}\text{⚠️ 这一条只到「观察 + 候选解释」，没有做实验区分}\\\\\text{候选：专家分派让图内节点变多、单次重放的固定成本上升}\\\\\text{不要在面试里把它讲成已证实的机制}\end{gathered}$$"]
+        P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8
+    end
+
+    subgraph SPEC["③ 与投机解码：验证步走的是哪条通道"]
+        direction TB
+        V0["$$\begin{gathered}\text{一次验证要同时算 }K+1\ \text{个位置}\\\\\text{只有变长注意力能一次吃下这么多 query}\\\\\text{逐 token 的 decode 通道每序列只收 1 个}\end{gathered}$$"]
+        V1["$$\begin{gathered}\text{所以验证步走 prefill 那条路（形状 }K+1\text{，每步固定）}\\\\\Rightarrow\text{图按 }K+1\ \text{固定形状录制即可保住}\\\\\text{代价是 pad 掉少量算力}\end{gathered}$$"]
+        V2["$$\begin{gathered}\text{两条通道的收益（Qwen3-8B + 0.6B draft · K=5 · 单卡）}\\\\\text{decode }59.3\to 128.1\ (2.16\times)\\\\\text{TTFT }27.31\to 73.27\ \text{ms}\ (2.68\times\ \text{变差})\end{gathered}$$"]
+        V3["$$\begin{gathered}\text{⚠️ 口径缺口：图 × 投机的四象限没有实测}\\\\\text{（有图无投机 / 无图有投机 / 都有 / 都没有）}\\\\\text{不要在面试里报一个自己没测过的那一格}\end{gathered}$$"]
+        V0 --> V1 --> V2 --> V3
+    end
+
+    subgraph OBS["④ 怎么把它看见：三件工具，各管一层"]
+        direction TB
+        O0["$$\begin{gathered}\text{框架层：哪个算子慢、编译融合了几个算子}\\\\\text{系统层：CPU 线程在干什么、流之间怎么并发}\\\\\text{内核层：占用率、访存是否合并}\end{gathered}$$"]
+        O1["$$\begin{gathered}\text{图会让框架层工具「部分失效」，但不是崩溃}\\\\\text{录制时 kernel 只登记不执行}\Rightarrow\text{这段时间的 GPU 时间是假的}\\\\\text{重放时 CPU 只剩一次图启动}\Rightarrow\text{看不到逐算子下发}\end{gathered}$$"]
+        O2["$$\begin{gathered}\text{三种摆法}\\\\\text{只包重放：数据可信（推荐）}\\\\\text{包住录制：不报错，但数字是脏的}\\\\\text{录制时工具处于活跃期：kernel 事件全丢}\end{gathered}$$"]
+        O3["$$\begin{gathered}\text{规避：把录制隔离在工具之外（预热也要放外面）}\\\\\text{要看图内每个 kernel }\Rightarrow\text{换驱动层的追踪工具}\\\\\text{图启动本身的成本 }\Rightarrow\text{自己打点}\end{gathered}$$"]
+        O4["$$\begin{gathered}\text{一个最常见的误读}\\\\\text{收尾同步占了 CPU 总耗时的 }92\%\Rightarrow\text{看起来 CPU 很忙}\\\\\text{其实是在空等：GPU 排了 }20\ \text{个各约 }1\ \text{ms 的 kernel}\end{gathered}$$"]
+        O5["$$\begin{gathered}\text{反向对照：小矩阵时这个同步只占约 }7\ \mu s\\\\\text{同一个数字，大小两个矩阵差 }2700\ \text{倍}\\\\\text{它衡量的是「等」，不是「算」}\end{gathered}$$"]
+        O0 --> O1 --> O2 --> O3 --> O4 --> O5
+    end
+
+    subgraph PICK["⑤ 选型：先算比值，再决定开不开"]
+        direction TB
+        X0["$$\begin{gathered}\text{判据：}T_{\text{固定}}/T_{\text{计算}}\\\\\text{比值越大，图越值钱；比值接近或小于 }1\text{ 时开图等于白开}\end{gathered}$$"]
+        X1["$$\begin{gathered}\text{0.6B 单卡：}18.0/2.22=8.1\Rightarrow\text{实测 }9.1\times\quad\text{【强烈推荐】}\\\\\text{8B 单卡：}10.6/17.2=0.62\Rightarrow\text{实测 }1.61\times\quad\text{【收益不大】}\\\\\text{MoE 稀疏：}6.9\times\quad\text{【推荐】}\end{gathered}$$"]
+        X2["$$\begin{gathered}\text{什么时候不要开}\\\\\text{① 计算已经主导（大模型、大 batch）}\\\\\text{② 并发档位极不均匀，pad 掉的比例很高}\\\\\text{③ 启动时间敏感：每个档位都要录一次}\end{gathered}$$"]
+        X0 --> X1 --> X2
+    end
+
+    E["$$\begin{gathered}\text{一句话收束}\\\\\text{图管调度、编译管计算；}\\\\\text{先算比值判断值不值，再用工具确认有没有真的发生}\end{gathered}$$"]:::io
+
+    TOP --> S0
+    S6 --> P0
+    P8 --> V0
+    V3 --> O0
+    O5 --> X0
+    X2 --> E
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px

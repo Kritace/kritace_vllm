@@ -1,0 +1,92 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+
+
+
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px
+    STG1["<b>一个真实步 · 三件事各自走哪条通道</b>"]
+    A1["$$\begin{gathered}\textbf{步入口：decode 与 prefill 分开跑}\\\\\text{同一轮里两类请求同时存在，形状不同不能合成一批}\\\\\text{新请求做 prefill：每条多个 token}\\\\\text{老请求做 decode：每序列 1 个 token}\\\\\text{先 decode 再 prefill，最后把两边 id 合并}\\\\T_{\text{step}}=T_{\text{decode}}+T_{\text{prefill}}\end{gathered}$$"]:::io
+    A2["$$\begin{gathered}\textbf{decode 组包：把 bs 向上取整到已录档位}\\\\\text{图按档位录，真实 bs 落在两档之间就多算几条空序列}\\\\\text{多算几条只浪费一点算力，换掉整张图的重录}\\\\\text{档位表：1、2、4、8，之后每 16 一档}\\\\\text{取第一个不小于 } bs \text{ 的档位}\Rightarrow pbs\ge bs\end{gathered}$$"]
+    D1{"cg 已启用且 bs 不超过最大档位？"}
+    A3["$$\begin{gathered}\textbf{图内：一次重放跑完整个 decode 步}\\\\\text{图里只录本地计算体，不含 PP 的收与发}\\\\\text{一次图启动提交整步，kernel 个数一个不少}\\\\\text{重放写回常驻输出缓冲，地址在录制时已固定}\\\\t_{\text{step}}^{\text{cg}}\approx t_{\text{graphLaunch}}+T_{\text{计算}}\end{gathered}$$"]
+    A8["$$\begin{gathered}\textbf{eager 回退：同一份 model 调用，只是不进图}\\\\\text{触发条件：没开图，或 bs 超过已录的最大档位}\\\\\text{前向代码与图里那一段完全相同，输入切片也一样}\\\\\text{差别只在提交方式：每个 kernel 单独下发一次}\\\\T_{\text{step}}=T_{\text{调度}}+T_{\text{计算}},\quad T_{\text{调度}}\approx 18.0\ \text{ms}\end{gathered}$$"]
+    D2{"本段两侧有 PP 邻居吗？"}
+    A4["$$\begin{gathered}\textbf{图外：PP 的收与发只能留在图外}\\\\\text{点对点收发对调用方同步阻塞：底层异步，返回前逐个等完成}\\\\\text{于是切成三段：图外收、图内前向、图外发}\\\\\text{依赖点把流水切开，图倍数从 9.1 掉到 4.2}\\\\\text{结构：}\text{recv}\to\text{graph}\to\text{send}\end{gathered}$$"]:::comm
+    A5["$$\begin{gathered}\textbf{图内：TP 的集合通信可以进图，但要先对齐}\\\\\text{all-reduce 是全员参与的确定性操作，发起后立即返回}\\\\\text{录图前后各一次 barrier，否则先到的 rank 卡在热身里}\\\\\text{实测 TP=2 的图倍数 10.6，反而高于单卡的 9.1}\\\\\text{每步 57 次，单次 }1\times1024\times2\ \text{B}=2\ \text{KiB}\end{gathered}$$"]:::comm
+    A6["$$\begin{gathered}\textbf{图外：采样必须留在外面}\\\\\text{采样要取 id 回主机，会阻塞调用方，进了图就是死锁}\\\\\text{整批贪心时直接 argmax，省掉最大的一次词表投影}\\\\\text{非贪心才算 logits 再采样，参数按请求打包成张量}\\\\\text{argmax}(h)\ \text{或}\ \text{logits}=hW^{\top},\ h\in\mathbb{R}^{bs\times H}\end{gathered}$$"]
+    A7["$$\begin{gathered}\textbf{收尾：先把结果异步拷出，用时才阻塞}\\\\\text{只把拷贝排进拷贝流就返回，与下一轮计算重叠}\\\\\text{真要用 id 去推进请求状态时，才等那个事件}\\\\n=n_p+n_d,\quad \text{拷贝流}\to\text{锁页内存}\to\text{CPU}\end{gathered}$$"]
+    P0["$$\begin{gathered}\textbf{prefill 组包：四个量决定这一步怎么走}\\\\\text{总 token 数、最长 Q、最长 K、以及有无前缀命中}\\\\\text{最长 K 与最长 Q 是两个值：命中前缀时 K 会大于 Q}\\\\\text{有前缀命中就要页表，纯首块则不需要}\\\\n_{\text{tok}}=\sum_i L_i,\quad K\ge Q\end{gathered}$$"]
+    D3{"compile 已构建且这批无前缀命中？"}
+    P1["$$\begin{gathered}\textbf{编译图：Q 与 K 等长，形状被写死}\\\\\text{只收五个参数，没有页表也没有独立的 K 边界}\\\\\text{编译压的是计算层：融合算子、少走几趟显存}\\\\\text{一旦命中前缀 K 更长，签名不匹配会静默算错}\\\\\text{kernel }646\to537,\quad \text{首 token }25.76\to5.36\ \text{ms}\end{gathered}$$"]
+    P2["$$\begin{gathered}\textbf{eager 变长路径：命中前缀就整批退回}\\\\\text{多传 K 侧边界与页表，注意力按真实长度切块}\\\\\text{编译图不支持这种签名，硬走会静默算错}\\\\\text{这是编译的适用边界，不是性能取舍}\\\\\text{只要有一条命中}\Rightarrow\text{整批退回 eager}\end{gathered}$$"]
+    D4{"这批请求带草稿吗？"}
+    S1["$$\begin{gathered}\textbf{验证步：走 prefill 通道，不走 decode 图}\\\\\text{一次要同时算 }K+1\text{ 个位置，只有变长注意力吃得下}\\\\\text{decode 通道的注意力每序列只收 1 个 query}\\\\\text{所以它享受编译或 eager，不进 decode 的图}\\\\\text{形状 }[bs,\ K+1],\quad \text{图按 }bs\text{ 档位录，不按 }K\text{ 录}\end{gathered}$$"]
+    S2["$$\begin{gathered}\textbf{判定：逐位置比 argmax，遇第一个不同就停}\\\\\text{输入 }[t_L,d_1..d_K]\text{ 共 }K+1\text{ 个位置，输出也是 }K+1\\\\\text{草稿统一补到 }K+1\text{，补位填 }-1\text{ 自然停下}\\\\\text{贪心只比 id；采样才比概率，且两侧温度必须一致}\\\\j=\min\{i:d_i\ne a_i\},\quad \text{产出}=d_{:j}+[a_j]\end{gathered}$$"]
+    P3["$$\begin{gathered}\textbf{普通 prefill 出口：只取每条序列的最后一位}\\\\\text{中间 token 后面还有上下文，不需要预测下一个词}\\\\\text{用累加边界减一落位，避免逐条循环}\\\\\text{整批都不用出 token 时（中间块）直接返回零}\\\\\text{last}=cu_q[1:bs+1]-1\end{gathered}$$"]
+    STG1 --> A1
+    STG2["<b>观测 · 一次采集里三层各看什么</b>"]
+    O1["$$\begin{gathered}\textbf{三件工具各管一层，别拿一把尺子量三件事}\\\\\text{带外计时看业务：每步耗时、图启动、通信耗时}\\\\\text{框架层看算子：谁最慢、融合掉了几个}\\\\\text{驱动层看流与线程；内核层看占用与访存}\\\\\text{分工：业务 / 算子 / 系统 / 内核}\end{gathered}$$"]
+    O2["$$\begin{gathered}\textbf{带外计时：关闭时零开销，不污染被测对象}\\\\\text{CPU 侧用单调时钟，只在启用时才读一次}\\\\\text{GPU 侧用 event 打在流里，测真实执行时间}\\\\\text{代价是出口要同步一次，会把 CPU 与 GPU 的重叠抹掉}\\\\t_{\text{cpu}}=\Delta t_{\text{wall}},\quad t_{\text{gpu}}=\text{event 差}\end{gathered}$$"]
+    D5{"profiler 包住的是重放还是捕获？"}
+    O3["$$\begin{gathered}\textbf{只包重放：数据可信}\\\\\text{每次重放 kernel 都真执行，记到真实时间戳}\\\\\text{融合 kernel 单次 1.430 微秒，与未套图的 1.442 一致}\\\\\text{CPU 侧只剩一条图启动，这本来就是图的本意}\\\\1.430\ \mu s\approx1.442\ \mu s\end{gathered}$$"]
+    O4["$$\begin{gathered}\textbf{包住捕获：不报错，但数字是脏的}\\\\\text{捕获时 kernel 只登记不执行，那段的 GPU 时间是假的}\\\\\text{还会混进图捕获接口自己的事件}\\\\\text{表里那个 1.47 微秒是登记，不是执行}\\\\\text{捕获}\Rightarrow\text{只记录}\Rightarrow\text{GPU 时间为假}\end{gathered}$$"]
+    O5["$$\begin{gathered}\textbf{录制时工具活跃：kernel 事件全丢}\\\\\text{整张表的 GPU 列全空，只剩步边界与同步调用}\\\\\text{采样事件关联不到步，采集与图捕获互相干扰}\\\\\text{这是三种摆法里最危险的一种，同样不报错}\\\\\text{GPU 列}=\varnothing\end{gathered}$$"]
+    O6["$$\begin{gathered}\textbf{要看图内每个 kernel，就换驱动层}\\\\\text{驱动层追踪走接口拦截，与框架层后端机制不同}\\\\\text{图启动本身的开销自己包一层打点}\\\\\text{图外的算子照常用框架层工具，只包图外那一段}\\\\\text{图内 kernel}\Rightarrow\text{驱动层};\quad \text{图启动}\Rightarrow\text{打点}\end{gathered}$$"]
+    O7["$$\begin{gathered}\textbf{必须识破的假象：同步占 92 不是 CPU 忙}\\\\\text{GPU 上排了 20 个各约 1 毫秒的 kernel，CPU 早已下发完}\\\\\text{这 19.44 毫秒是等待，不是干活}\\\\\text{对照 64 见方的小矩阵，同一个同步只有 7.16 微秒}\\\\19.444/21.084=92.22,\quad \text{性质是等}\end{gathered}$$"]
+    STG2 --> O1
+    STG3["<b>选型 · 先算比值再决定</b>"]
+    C1["$$\begin{gathered}\textbf{先算比值，再决定开不开}\\\\\text{把一步拆成固定开销与真实计算两块}\\\\\text{倍数等于 1 加固定除计算，比值越大图越值钱}\\\\\text{比值接近或小于 1 时，开图等于白开}\\\\S_{\text{cg}}=1+T_{\text{fixed}}/T_{\text{compute}}\end{gathered}$$"]
+    D6{"比值明显大于 1 吗？"}
+    C2["$$\begin{gathered}\textbf{小模型单请求：强烈推荐}\\\\\text{固定开销远大于真实计算，压掉它能直接翻倍}\\\\\text{这是雪中送炭，不是锦上添花}\\\\18.0/2.22=8.1\\\\\text{实测 decode }49.5\to449.7\ \ (9.1\times)\end{gathered}$$"]
+    C3["$$\begin{gathered}\textbf{大模型单卡：有收益但不大}\\\\\text{计算已经主导，固定开销只是零头}\\\\\text{仍值得开，但不要指望数量级}\\\\10.6/17.2=0.62\\\\\text{实测 }1.61\times\end{gathered}$$"]
+    D7{"还有已知的负组合吗？"}
+    C4["$$\begin{gathered}\textbf{这些情况不要开}\\\\\text{PP=2 同时叠图与编译：实测直接崩，只做规避未挖根因}\\\\\text{EP 加图是负交互：图下从 201.04 掉到 161.33，降 19.8}\\\\\text{形状每步都变、张量极小、显存贴顶、需要断点}\\\\\text{PP=2+cg+compile}\Rightarrow\text{启动即崩}\end{gathered}$$"]
+    C5["$$\begin{gathered}\textbf{成本也要减掉，别只算收益}\\\\\text{收益随调用次数线性涨，启动成本只付有限次}\\\\\text{图要按档位各录一次，编译有冷热缓存之差}\\\\\text{离线小批量、形状多变时，成本会把收益吃回去}\\\\\text{净收益}=N\Delta T-T_{\text{启动}}N_{\text{重录}}\end{gathered}$$"]
+    C6["$$\begin{gathered}\textbf{收束：两个杠杆各压一层，先算比值再验证}\\\\\text{图管调度层，编译管计算层，覆盖阶段也不同}\\\\\text{能叠加的判据是两项都还占显著比例}\\\\\text{开了之后要用三层工具确认它真的发生了}\\\\S_{\text{both}}\approx S_{\text{cg}}\times S_{\text{compile}}\ \text{（仅当两项无重叠）}\end{gathered}$$"]:::io
+    STG3 --> C1
+    A1 --> A2
+    A1 --> P0
+    A2 --> D1
+    D1 -->|"是"| A3
+    D1 -->|"否"| A8
+    A3 --> D2
+    D2 -->|"有"| A4
+    D2 -->|"无"| A5
+    A4 --> A5
+    A5 --> A6
+    A8 --> A6
+    A6 --> A7
+    P0 --> D3
+    D3 -->|"是"| P1
+    D3 -->|"否"| P2
+    P1 --> D4
+    P2 --> D4
+    D4 -->|"带"| S1
+    D4 -->|"不带"| P3
+    S1 --> S2
+    S2 --> A7
+    P3 --> A7
+    A7 --> O1
+    O1 --> O2
+    O2 --> D5
+    D5 -->|"只包重放"| O3
+    D5 -->|"包住捕获"| O4
+    D5 -->|"录制时活跃"| O5
+    O3 --> O6
+    O4 --> O6
+    O5 --> O6
+    O6 --> O7
+    O7 --> C1
+    C1 --> D6
+    D6 -->|"是"| C2
+    D6 -->|"否"| C3
+    C2 --> D7
+    C3 --> D7
+    D7 -->|"有"| C4
+    D7 -->|"没有"| C5
+    C4 --> C5
+    C5 --> C6
+    classDef stage fill:#fffbe6,stroke:#b8a24a,stroke-width:1.5px
+    class STG1,STG2,STG3 stage

@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- 局部放大截图页（运行时被拷进 diagrams/ 当 _zoom.html）：
+     ?f=<svg 文件名>&s=<缩放>&x=<左上角 x>&y=<左上角 y>
+     用 `chrome --headless=new --screenshot=out.png --window-size=W,H <url>` 抓任意区域。 -->
+<html><head><meta charset="utf-8"><title>zoom</title>
+<style>html,body{margin:0;background:#fff;overflow:hidden}#w{transform-origin:0 0;display:inline-block}</style>
+</head><body>
+<div id="w"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const s = parseFloat(q.get('s') || '1'), x = parseFloat(q.get('x') || '0'), y = parseFloat(q.get('y') || '0');
+const file = q.get('f') || './tp_pp_4gpu.svg';
+fetch(file, { cache: 'no-store' }).then(r => r.text()).then(t => {
+  const w = document.getElementById('w');
+  w.innerHTML = t;
+  const svg = w.querySelector('svg');
+  const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  svg.setAttribute('width', vb[2]);
+  svg.setAttribute('height', vb[3]);
+  svg.style.display = 'block';
+  w.style.transform = `translate(${-x * s}px, ${-y * s}px) scale(${s})`;
+  document.title = 'READY ' + vb[2] + 'x' + vb[3];
+});
+</script>
+</body></html>

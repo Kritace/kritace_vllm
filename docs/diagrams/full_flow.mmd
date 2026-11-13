@@ -1,0 +1,197 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    HOST["$$\begin{gathered}\text{① 引擎层（CPU）：跑在进程 0 · 卡 0 上 = driver}\\\\\text{（这一段不在任何 GPU 上，归到卡 0 只是为了标出它跑在哪）}\\\\\text{调度：先挑 decode（老请求各 1 个 token），再挑 prefill（新请求整段）}\\\\\text{顺手做的事：显存预检（按 }K+1\text{ 个位置算）、挑要抢占的序列、判前缀缓存命中}\\\\\text{开着投机：decode 请求先下到 ⑰ 上半场出草稿}\\\\\text{关着投机：直接下去组表 —— 那就是普通 decode}\\\\\text{本图画的是 TP=2 }\times\text{ PP=2 的四卡；DP 与 EP 两个轴见「说明区」}\end{gathered}$$"]
+
+    subgraph SP1["⑰ 投机解码 · 上半场（CPU · 卡 0）：先算划不划算，再出草稿、占账本"]
+        direction TB
+        S0["$$\begin{gathered}\text{⑰-0 为什么值得做：decode 的瓶颈是「每步把全部权重读一遍」}\\\\\text{本机实测：0.6B 每步约 }1.19\text{ ms，而算一遍只要 }0.0036\text{ ms ⇒ 是访存瓶颈}\\\\\text{每产出 token 的时间}=\frac{T_{\text{读权重}}+T_{\text{线性层}}+T_{\text{注意力}}}{1+\text{接受的草稿数}}\\\\\text{分母变大、分子几乎不变 —— 这就是全部收益来源}\\\\E[\text{新 token 数}]=1+\alpha+\alpha^{2}+\dots+\alpha^{K}=\frac{1-\alpha^{K+1}}{1-\alpha}\\\\\text{⚠ }\alpha\text{ 完全由文本重复度决定：高重复 }5.87\times\text{、代码 }1.16\times\\\\\text{所以投机不是万灵药：它买的是「输入本身有冗余」这件事}\end{gathered}$$"]
+        S1["$$\begin{gathered}\text{⑰-1 草稿从哪来（两条路，本项目两条都实现了）}\\\\\text{n-gram：拿末尾几个 token 去历史里查表，命中就抄后面的}\\\\\text{⇒ 它根本不跑模型，所以既没有草稿 KV，也拿不出草稿概率}\\\\\text{draft 模型：同词表的小模型自回归跑 }K\text{ 步 ⇒ 有一套自己独立的 KV}\\\\\text{建议先跑 n-gram：不依赖第二个模型，能立刻验出账本与采样的错}\\\\\text{草稿返空（没匹配上）⇒ 这一轮退回普通 decode，与「全被拒」是两件事}\end{gathered}$$"]
+        S2["$$\begin{gathered}\text{⑰-2 构造验证输入：}\big[\text{最后一个 token},\ \text{草稿}_1,\dots,\text{草稿}_K\big]\\\\\text{共 }K+1\text{ 个位置 —— 为什么要把最后一个 token 重复一遍？}\\\\\text{这样输出位置 }i\text{ 就直接对应「草稿 }i\text{ 该不该接受」}\\\\\text{不必额外保存上一步的 logits；代价是多算一个位置}\\\\\text{定宽补齐：同一批里各序列的草稿长度取最大那个，空位填 }-1\\\\\text{（填 }-1\text{ 不等于任何真实 token，贪心判定会自然停下）}\end{gathered}$$"]
+        S3["$$\begin{gathered}\text{⑰-3 按 }K+1\text{ 个位置在 KV 账本里占槽（不是 }K\text{ 个）}\\\\\text{因为验证阶段这 }K+1\text{ 个位置的 KV 全部会算出来并写进去}\\\\\text{⚠ 若「已缓存数 }\bmod 256」+K+1>256\text{ 就会跨块 ⇒ 必须提前多要一个块}\\\\\text{不多要的后果：挤掉别的序列，或者写到没分配过的槽上}\\\\\text{一次前向能让 }K+1\text{ 个位置并存，靠的是因果掩码}\\\\\text{位置 }i\text{ 只看 }i\text{ 及以前 ⇒ 和自回归逐个喂逐位相同（这点与 beam search 不同）}\end{gathered}$$"]
+    end
+
+    H1["$$\begin{gathered}\text{交接① 组表与搬运（CPU}\to\text{GPU；拷完立刻返回，不在这里等）}\\\\\text{6 张表：本步 token 号 / 位置 / 物理槽位 / 每序列已缓存长度 / 变长前缀和 / 块表}\\\\\text{从 pinned 内存异步拷进显存 —— 用 pinned 是为了省掉一次中转拷贝}\\\\\text{为什么必须有这条边界：CPU 决定「算谁」、GPU 决定「算出什么」}\\\\\text{CPU 的活（调度 / 组表 / 账本）与 GPU 的前向严格交替、不重叠}\end{gathered}$$"]:::io
+
+    SHP["$$\begin{gathered}\text{本步是三种形状里的哪一种，在组表时就定下来}\\\\\text{prefill：输入整段 prompt 或一段 chunk，变长注意力，出口只取每序列最后 1 个位置}\\\\\text{decode：输入 1 个 token，单个 query 看全部历史，出口就这 1 个位置}\\\\\text{投机验证：输入 }K+1\text{ 个位置，出口 }【每个】\text{位置都要用}\\\\\text{它借的是 prefill 通道（要变长注意力），但语义与 chunked prefill 完全不同}\\\\\text{⚠ chunked prefill 喂的是真实 token；投机喂的是猜出来的 token}\\\\\text{走 CUDA Graph 的只有 decode（形状固定 + 补齐）；另外两种长度可变，不走}\\\\\text{账本推进也不同：prefill 推进整段、decode 推进 }1\text{、投机只推进 }j+1\\\\\text{回传元素数也不同：前两种每请求 1 个；投机是「定宽 }\times\text{ 请求数」}\end{gathered}$$"]:::io
+
+    subgraph TPA["段 0 的 TP 组内通信（卡 0 ⇄ 卡 1）　两张卡各自发起同一条，没有主卡"]
+        direction TB
+        X0["$$\begin{gathered}\text{③ 集合通信 allreduce(SUM)：查表这一步就要一次}\\\\\text{卡 0 与卡 1 各自发起；越界 token 在别的卡上是零向量}\\\\h\,[N,hs]=\sum_{r=0}^{tp-1}h^{(r)}\end{gathered}$$"]:::comm
+        X1["$$\begin{gathered}\text{层内第 1 次 · 集合通信 allreduce(SUM)}\\\\\text{卡 0 与卡 1 各自发起同一条（两层中间那个蓝框）}\\\\\text{为什么必须：输出投影按输入维切了，两卡各只有一半的和}\\\\y\,[N,hs]=y^{(0)}+y^{(1)}\qquad\text{算完两卡都拿到完整结果}\end{gathered}$$"]:::comm
+        X2["$$\begin{gathered}\text{层内第 2 次 · 集合通信 allreduce(SUM)}\\\\\text{卡 0 与卡 1 各自发起同一条（两层中间那个蓝框）}\\\\\text{为什么必须：命中的专家分散在两卡上，各卡只算到一部分}\\\\m\,[N,hs]=m^{(0)}+m^{(1)}\qquad\text{稠密模型时求的是降维投影的输出}\end{gathered}$$"]:::comm
+    end
+
+    subgraph TPB["段 1 的 TP 组内通信（卡 2 ⇄ 卡 3）　与段 0 是同一套，只换了一对卡"]
+        direction TB
+        X5["$$\begin{gathered}\text{层内第 1 次 · 集合通信 allreduce(SUM)}\\\\\text{卡 2 与卡 3 各自发起同一条}\\\\y\,[N,hs]=y^{(0)}+y^{(1)}\end{gathered}$$"]:::comm
+        X6["$$\begin{gathered}\text{层内第 2 次 · 集合通信 allreduce(SUM)}\\\\\text{卡 2 与卡 3 各自发起同一条}\\\\m\,[N,hs]=m^{(0)}+m^{(1)}\end{gathered}$$"]:::comm
+    end
+
+    X3["$$\begin{gathered}\text{交接⑤ PP 点对点下发（}【只有这一个方向】\text{，不经 CPU）}\\\\\text{卡 0}\to\text{卡 2：}h\,[N,hs]\ \text{与}\ r\,[N,hs]\\\\\text{卡 1}\to\text{卡 3：}h\,[N,hs]\ \text{与}\ r\,[N,hs]\\\\\text{两路各发各的，不是广播}\\\\\text{为什么是两项：残差是两条线，少送一项下一段就算错}\\\\\text{为什么不用 allgather：}hs\text{ 在 TP 组内根本没切，每卡本来就是完整的}\\\\\text{⚠ PP 没有反方向：段 1 算完不在点对点通道上回传激活值}\\\\\text{采样结果另走「交接②③」与「控制通道」回去（见下面的回程）}\end{gathered}$$"]:::comm
+
+    subgraph C0["卡 0 · 段 0 · TP rank 0　（跑层 0–13；负责 Q 头 0–7、KV 头 0–3）"]
+        direction TB
+        C0a["$$\begin{gathered}\text{收到本步入参（四张卡同一批）}\\\\N\text{ 个 token；本段要跑 14 层（PP 把 28 层切成两段）}\end{gathered}$$"]
+        C0b["$$\begin{gathered}\text{③ 查表得向量：词表并行，越界 token 取零向量，最后要一次求和}\\\\h\,[N,hs]=E\,[x],\qquad hs=1024,\ V=151936\end{gathered}$$"]
+        C0c["$$\begin{gathered}\text{④-1 归一化①：作用在完整 }hs\text{ 上（没被切）}\Rightarrow\text{本步零通信}\\\\x\,[N,hs]=\mathrm{RMSNorm}_1(h)\odot\gamma_1=\frac{h}{\sqrt{\frac{1}{hs}\sum_i h_i^2+\epsilon}}\odot\gamma_1,\quad \epsilon=10^{-6}\end{gathered}$$"]
+        C0d["$$\begin{gathered}\text{A1 三合一投影：列并行，按输出维切，本卡取前半段}\Rightarrow\text{零通信}\\\\q^{(0)}=x\,[N,hs]\cdot\big(W_q^{(0)}\big)^{\top},\qquad q^{(0)}\,[N,ahs/tp]=[N,1024]\end{gathered}$$"]
+        C0e["$$\begin{gathered}\text{A2–A4 拆头 → 头内归一化 → 旋转位置编码}\\\\q^{(0)}\to[N,8,128]\text{（本卡 8 个头）};\qquad \theta_i=\text{base}^{-2i/d_h},\ \text{base}=10^6\\\\\text{归一化轴是头维 }d_h=128\text{，不是 }hs\text{；只转 }q,k\text{，}v\text{ 不转}\end{gathered}$$"]
+        C0f["$$\begin{gathered}\text{A5 写本卡的 KV 缓存（只写自己那 4 个 KV 头，且必须先写）}\\\\k^{(0)}_{cache}[\text{slot}]=k^{(0)},\qquad v^{(0)}_{cache}[\text{slot}]=v^{(0)}\end{gathered}$$"]
+        C0g["$$\begin{gathered}\text{A6–A9 注意力：本卡只算自己那 8 个 Q 头}\\\\o^{(0)}=\mathrm{softmax}\!\Big(\frac{q^{(0)}k^{(0)\top}}{\sqrt{d_h}}\Big)v^{(0)},\qquad o^{(0)}\,[N,1024]\end{gathered}$$"]
+        C0h["$$\begin{gathered}\text{A10 输出投影：行并行，按输入维切}\Rightarrow\text{本卡只算出一个部分和}\\\\y^{(0)}=z^{(0)}\,[N,ahs/tp]\cdot\big(W_{out}^{(0)}\big)^{\top},\qquad y^{(0)}\,[N,hs]\end{gathered}$$"]
+        C0i["$$\begin{gathered}\text{④-3 残差① + ④-4 归一化②（系数来自 postnorm 合并）}\\\\h'=\alpha_1 x+\beta_1 y,\qquad u\,[N,hs]=\mathrm{RMSNorm}_2(h')\odot\gamma_2\end{gathered}$$"]
+        C0j["$$\begin{gathered}\text{B4 路由打分：路由权重每卡一份完整副本}\Rightarrow\text{与卡 1 选出同一批专家}\\\\s\,[N,E]=\mathrm{softmax}\big(u\cdot W_g^{\top}\big)\end{gathered}$$"]
+        C0k["$$\begin{gathered}\text{B5–B7 本卡专家分片：只算中间维的 }1/tp\Rightarrow\text{又是部分和}\\\\m^{(0)}=\sum_{i\in\mathcal{T}}w_i\,W_{2,i}^{(0)}\Big[\mathrm{SiLU}\big(W_{1,i}^{(0)}u\big)\odot W_{3,i}^{(0)}u\Big]\end{gathered}$$"]
+        C0l["$$\begin{gathered}\text{④-6 残差②：回 ④-1 做下一层（本段共 14 层）}\\\\h''=\alpha_2 u+\beta_2 m,\qquad h\coloneqq h''\end{gathered}$$"]
+        C0m["$$\begin{gathered}\text{本段 14 层跑完：把 }h\text{ 与 }r\text{ 两项发给卡 2}\\\\h\,[N,hs]\ \text{与}\ r\,[N,hs],\qquad \text{peer}=\text{PP 组内下一个}\Rightarrow\text{卡 2}\end{gathered}$$"]
+        C0a --> C0b
+        C0c --> C0d --> C0e --> C0f --> C0g --> C0h
+        C0h --> X1
+        X1 --> C0i
+        C0i --> C0j --> C0k
+        C0k --> X2
+        X2 --> C0l
+        C0l --> C0m
+    end
+
+    subgraph C1["卡 1 · 段 0 · TP rank 1　（跑层 0–13；负责 Q 头 8–15、KV 头 4–7）"]
+        direction TB
+        C1a["$$\begin{gathered}\text{收到本步入参（与卡 0 同一批）}\\\\N\text{ 个 token；本段要跑 14 层}\end{gathered}$$"]
+        C1b["$$\begin{gathered}\text{③ 查表得向量：查的是同一张表，本卡持有另外半张词表}\\\\h\,[N,hs]=E\,[x],\qquad hs=1024,\ V=151936\end{gathered}$$"]
+        C1c["$$\begin{gathered}\text{④-1 归一化①：作用在完整 }hs\text{ 上}\Rightarrow\text{本步零通信}\\\\x\,[N,hs]=\mathrm{RMSNorm}_1(h)\odot\gamma_1\end{gathered}$$"]
+        C1d["$$\begin{gathered}\text{A1 三合一投影：列并行，本卡取后半段}\Rightarrow\text{零通信}\\\\q^{(1)}=x\,[N,hs]\cdot\big(W_q^{(1)}\big)^{\top},\qquad q^{(1)}\,[N,ahs/tp]=[N,1024]\end{gathered}$$"]
+        C1e["$$\begin{gathered}\text{A2–A4 拆头 → 头内归一化 → 旋转位置编码}\\\\q^{(1)}\to[N,8,128]\text{（本卡另外那 8 个头）};\qquad \theta_i=\text{base}^{-2i/d_h}\end{gathered}$$"]
+        C1f["$$\begin{gathered}\text{A5 写本卡的 KV 缓存（另外那 4 个 KV 头）}\\\\k^{(1)}_{cache}[\text{slot}]=k^{(1)},\qquad v^{(1)}_{cache}[\text{slot}]=v^{(1)}\end{gathered}$$"]
+        C1g["$$\begin{gathered}\text{A6–A9 注意力：本卡只算另外那 8 个 Q 头}\\\\o^{(1)}=\mathrm{softmax}\!\Big(\frac{q^{(1)}k^{(1)\top}}{\sqrt{d_h}}\Big)v^{(1)}\end{gathered}$$"]
+        C1h["$$\begin{gathered}\text{A10 输出投影：行并行}\Rightarrow\text{本卡也只算出一个部分和}\\\\y^{(1)}=z^{(1)}\,[N,ahs/tp]\cdot\big(W_{out}^{(1)}\big)^{\top},\qquad y^{(1)}\,[N,hs]\end{gathered}$$"]
+        C1i["$$\begin{gathered}\text{④-3 残差① + ④-4 归一化②}\\\\h'=\alpha_1 x+\beta_1 y,\qquad u\,[N,hs]=\mathrm{RMSNorm}_2(h')\odot\gamma_2\end{gathered}$$"]
+        C1j["$$\begin{gathered}\text{B4 路由打分：同一条路由权重}\Rightarrow\text{与卡 0 选出同一批专家}\\\\s\,[N,E]=\mathrm{softmax}\big(u\cdot W_g^{\top}\big)\end{gathered}$$"]
+        C1k["$$\begin{gathered}\text{B5–B7 本卡专家分片：中间维的另一半}\Rightarrow\text{部分和}\\\\m^{(1)}=\sum_{i\in\mathcal{T}}w_i\,W_{2,i}^{(1)}\Big[\mathrm{SiLU}\big(W_{1,i}^{(1)}u\big)\odot W_{3,i}^{(1)}u\Big]\end{gathered}$$"]
+        C1l["$$\begin{gathered}\text{④-6 残差②：回 ④-1 做下一层（本段共 14 层）}\\\\h''=\alpha_2 u+\beta_2 m,\qquad h\coloneqq h''\end{gathered}$$"]
+        C1m["$$\begin{gathered}\text{本段 14 层跑完：把 }h\text{ 与 }r\text{ 两项发给卡 3}\\\\h\,[N,hs]\ \text{与}\ r\,[N,hs],\qquad \text{peer}=\text{PP 组内下一个}\Rightarrow\text{卡 3}\end{gathered}$$"]
+        C1a --> C1b
+        C1c --> C1d --> C1e --> C1f --> C1g --> C1h
+        C1h --> X1
+        X1 --> C1i
+        C1i --> C1j --> C1k
+        C1k --> X2
+        X2 --> C1l
+        C1l --> C1m
+    end
+
+    subgraph C2["卡 2 · 段 1 · TP rank 0　（跑层 14–27；负责 Q 头 0–7、KV 头 0–3；末段，采样只在卡 2）"]
+        direction TB
+        C2a["$$\begin{gathered}\text{PP 边界：收上一段发来的 }h\text{ 与 }r\text{ 两项}\\\\\text{recv }h\,[N,hs]\ \text{与}\ r\,[N,hs]\ \leftarrow\ \text{卡 0}\end{gathered}$$"]
+        C2b["$$\begin{gathered}\text{④-1 归一化①（本段没有查表，输入直接从 PP 边界来）}\\\\x\,[N,hs]=\mathrm{RMSNorm}_1(h)\odot\gamma_1\end{gathered}$$"]
+        C2c["$$\begin{gathered}\text{A1 三合一投影：列并行，本卡取前半段}\Rightarrow\text{零通信}\\\\q^{(0)}=x\,[N,hs]\cdot\big(W_q^{(0)}\big)^{\top}\end{gathered}$$"]
+        C2d["$$\begin{gathered}\text{A2–A5 拆头 → 头内归一化 → 旋转位置编码 → 写本卡 KV}\\\\q^{(0)}\to[N,8,128];\qquad k^{(0)}_{cache}[\text{slot}]=k^{(0)}\end{gathered}$$"]
+        C2e["$$\begin{gathered}\text{A6–A9 注意力：本卡只算自己那 8 个 Q 头}\\\\o^{(0)}=\mathrm{softmax}\!\Big(\frac{q^{(0)}k^{(0)\top}}{\sqrt{d_h}}\Big)v^{(0)}\end{gathered}$$"]
+        C2f["$$\begin{gathered}\text{A10 输出投影：行并行}\Rightarrow\text{部分和}\\\\y^{(0)}=z^{(0)}\cdot\big(W_{out}^{(0)}\big)^{\top}\end{gathered}$$"]
+        C2g["$$\begin{gathered}\text{④-3 残差① + ④-4 归一化②}\\\\h'=\alpha_1 x+\beta_1 y,\qquad u=\mathrm{RMSNorm}_2(h')\odot\gamma_2\end{gathered}$$"]
+        C2h["$$\begin{gathered}\text{B4 路由打分（与卡 3 同一批专家）}\\\\s\,[N,E]=\mathrm{softmax}\big(u\cdot W_g^{\top}\big)\end{gathered}$$"]
+        C2i["$$\begin{gathered}\text{B5–B7 本卡专家分片}\Rightarrow\text{部分和}\\\\m^{(0)}=\sum_{i\in\mathcal{T}}w_i\,W_{2,i}^{(0)}\Big[\mathrm{SiLU}\big(W_{1,i}^{(0)}u\big)\odot W_{3,i}^{(0)}u\Big]\end{gathered}$$"]
+        C2j["$$\begin{gathered}\text{④-6 残差②：下一层（本段共 14 层）}\\\\h''=\alpha_2 u+\beta_2 m\end{gathered}$$"]
+        C2k["$$\begin{gathered}\text{14 层跑完 → 末层归一化（只有末段才有这一层）}\\\\H_n\,[N,hs]=\mathrm{RMSNorm}_{last}(H)\odot\gamma_n\end{gathered}$$"]
+        C2l["$$\begin{gathered}\text{输出层：}1024\to151936\text{（复制：每卡都算全词表）}\\\\\mathrm{logits}\,[n,V]=H_n\,[N,hs]\cdot W_{lm}^{\top},\qquad V=151936\\\\\text{只对需要的位置算：decode 1 个 / prefill 每序列最后 1 个 / 投机全部 }K+1\text{ 个}\\\\\text{⚠ 投机时这一步的开销也放大 }K+1\text{ 倍 —— 这是分母变大后要付的代价}\end{gathered}$$"]
+        C2m["$$\begin{gathered}\text{★ 采样（只有末段的 TP rank 0 做，就是本卡；全在 GPU 上）}\\\\p=\mathrm{softmax}(z/T)\ \to\ \text{top-}k\ \to\ \text{top-}p\ \to\ \text{min-}p\ \to\ \text{按 }p\text{ 采样}\\\\\text{全贪心时直接取 argmax，连概率都不构造，更快也更稳}\\\\\text{⚠ 四个采样参数只在 CPU 侧可变 —— 每轮由交接① 送下来}\\\\\text{结果写回显存，立刻走交接② 拷回 CPU}\end{gathered}$$"]
+        C2a --> C2b --> C2c --> C2d --> C2e --> C2f
+        C2f --> X5
+        X5 --> C2g
+        C2g --> C2h --> C2i
+        C2i --> X6
+        X6 --> C2j
+        C2j --> C2k --> C2l --> C2m
+    end
+
+    subgraph C3["卡 3 · 段 1 · TP rank 1　（跑层 14–27；负责 Q 头 8–15、KV 头 4–7；本卡不采样）"]
+        direction TB
+        C3a["$$\begin{gathered}\text{PP 边界：收上一段发来的 }h\text{ 与 }r\text{ 两项}\\\\\text{recv }h\,[N,hs]\ \text{与}\ r\,[N,hs]\ \leftarrow\ \text{卡 1}\end{gathered}$$"]
+        C3b["$$\begin{gathered}\text{④-1 归一化①}\\\\x\,[N,hs]=\mathrm{RMSNorm}_1(h)\odot\gamma_1\end{gathered}$$"]
+        C3c["$$\begin{gathered}\text{A1 三合一投影：列并行，本卡取后半段}\Rightarrow\text{零通信}\\\\q^{(1)}=x\,[N,hs]\cdot\big(W_q^{(1)}\big)^{\top}\end{gathered}$$"]
+        C3d["$$\begin{gathered}\text{A2–A5 拆头 → 头内归一化 → 旋转位置编码 → 写本卡 KV}\\\\q^{(1)}\to[N,8,128];\qquad k^{(1)}_{cache}[\text{slot}]=k^{(1)}\end{gathered}$$"]
+        C3e["$$\begin{gathered}\text{A6–A9 注意力：本卡只算另外那 8 个 Q 头}\\\\o^{(1)}=\mathrm{softmax}\!\Big(\frac{q^{(1)}k^{(1)\top}}{\sqrt{d_h}}\Big)v^{(1)}\end{gathered}$$"]
+        C3f["$$\begin{gathered}\text{A10 输出投影：行并行}\Rightarrow\text{部分和}\\\\y^{(1)}=z^{(1)}\cdot\big(W_{out}^{(1)}\big)^{\top}\end{gathered}$$"]
+        C3g["$$\begin{gathered}\text{④-3 残差① + ④-4 归一化②}\\\\h'=\alpha_1 x+\beta_1 y,\qquad u=\mathrm{RMSNorm}_2(h')\odot\gamma_2\end{gathered}$$"]
+        C3h["$$\begin{gathered}\text{B4 路由打分（与卡 2 同一批专家）}\\\\s\,[N,E]=\mathrm{softmax}\big(u\cdot W_g^{\top}\big)\end{gathered}$$"]
+        C3i["$$\begin{gathered}\text{B5–B7 本卡专家分片}\Rightarrow\text{部分和}\\\\m^{(1)}=\sum_{i\in\mathcal{T}}w_i\,W_{2,i}^{(1)}\Big[\mathrm{SiLU}\big(W_{1,i}^{(1)}u\big)\odot W_{3,i}^{(1)}u\Big]\end{gathered}$$"]
+        C3j["$$\begin{gathered}\text{④-6 残差②：下一层（本段共 14 层）}\\\\h''=\alpha_2 u+\beta_2 m\end{gathered}$$"]
+        C3k["$$\begin{gathered}\text{14 层跑完 → 末层归一化}\\\\H_n\,[N,hs]=\mathrm{RMSNorm}_{last}(H)\odot\gamma_n\end{gathered}$$"]
+        C3l["$$\begin{gathered}\text{输出层（复制）}\Rightarrow\text{与卡 2 逐位相同的 logits}\\\\\mathrm{logits}\,[n,V]=H_n\,[N,hs]\cdot W_{lm}^{\top}\end{gathered}$$"]
+        C3m["$$\begin{gathered}\text{本卡不采样 —— 采样只由末段的 TP rank 0（卡 2）做}\\\\\text{本卡算完就等下一轮}\end{gathered}$$"]
+        C3a --> C3b --> C3c --> C3d --> C3e --> C3f
+        C3f --> X5
+        X5 --> C3g
+        C3g --> C3h --> C3i
+        C3i --> X6
+        X6 --> C3j
+        C3j --> C3k --> C3l --> C3m
+    end
+
+    subgraph RET["回程（GPU → CPU）：先异步拷回，再同步等，最后经控制通道送回 driver"]
+        direction TB
+        H2["$$\begin{gathered}\text{交接② 异步 D2H：采样结果从显存拷回 pinned 内存}\\\\\text{拷完立刻返回，CPU 不在这里等 —— 全流程唯一的异步优化}\\\\\text{目的：把「等 GPU」推迟到真正要用这个数据的时候}\\\\\text{⚠ 只有 driver 进程（rank 0）自己的采样结果能这样异步拿}\\\\\text{其它卡的结果仍在它们自己的进程里，得走下一条}\end{gathered}$$"]:::io
+        H3["$$\begin{gathered}\text{交接③ 同步点：等到真正要用数据时才停下等}\\\\\text{全流程里 CPU 唯一真正阻塞在 GPU 上的地方}\\\\\text{在这之前 CPU 还能干别的（而这里的「别的」只是准备下一轮组表）}\end{gathered}$$"]:::io
+        H4["$$\begin{gathered}\text{控制通道：采样卡}\to\text{driver（这条}【不是】\text{PP 点对点！）}\\\\\text{PP 点对点只有正向，送的是激活值；采样结果走的是另一条字节通道}\\\\\text{为什么另开一条：两边的载荷形状不固定（一次调度结果有几十个字段）}\\\\\text{而底层只能传张量 ⇒ 先序列化成字节、包成张量，到了再还原}\\\\\text{用 Gloo 不用 NCCL：消息在 CPU 上、又都很小}\\\\\text{协议上先传长度再传内容（长度 }0\text{ 表示没数据）}\\\\\text{⚠ driver 侧的收是}【阻塞】\text{的 ⇒ 这一步没法与下一次调度重叠，是硬停顿}\end{gathered}$$"]:::io
+    end
+
+    subgraph SP2["⑰ 投机解码 · 下半场（CPU · 卡 0）：判接受、重采样、只推进 j+1"]
+        direction TB
+        S4["$$\begin{gathered}\text{⑰-4 逐位置判接受：以概率 }\min\!\big(1,\ p/q\big)\text{ 接受，}q\text{ 必须来自草稿侧}\\\\\text{⚠ }q\text{ 绝不能取 target 自己的概率：那样 }q\equiv p\Rightarrow\min(1,p/q)\equiv1\\\\\text{⇒ 草稿被无条件接受、拒绝那半永不触发 ⇒ 分布被改掉，不再无损}\\\\\text{贪心 }T=0\text{ 时 }p\text{、}q\text{ 都退化成 one-hot}\\\\\text{⇒ 规则变成「草稿 token 是否等于 target 的 argmax」，实现上直接比 token 号}\\\\\text{接受 }j\text{ 个（}0\le j\le K\text{）；接受率 }\alpha=j/K\text{ 是收益的唯一自变量}\\\\\text{⚠ 引擎现在这条路用的是贪心判定；采样那一套有完整实现与单测但没接进来}\end{gathered}$$"]
+        S5["$$\begin{gathered}\text{⑰-5 被拒的那个位置由 target 重采样，且必须从残差分布里采}\\\\p'(x)=\frac{\max\big(0,\ p(x)-q(x)\big)}{\sum_{x'}\max\big(0,\ p(x')-q(x')\big)}\\\\\text{两路合起来才等于 }p\text{：}\ \underbrace{\min(q,p)}_{\text{接受路}}\ +\ \underbrace{(p-q)^{+}}_{\text{拒绝路}}\ =\ p(x)\\\\\text{为什么必须砍掉草稿「过度自信」的那部分：不砍就变成有偏解码}\\\\\text{查表草稿是特例：}q\text{ 退化成 one-hot ⇒ 接受概率就是 }p(x̃)\text{，残差就是把这项拿掉再归一化}\end{gathered}$$"]
+        S6["$$\begin{gathered}\text{⑰-6 账本只推进 }j+1\text{，不回滚}\\\\\text{有效产出 }j+1\text{ 个；已写进 KV 但无效的 }K-j\text{ 个槽不做任何事}\\\\\text{下一步的槽位映射从新的已缓存数起算，自然把它们覆盖掉}\\\\\text{为什么敢不回滚：块大小 }256\text{，而 }K+1\text{ 只有 }4\sim8\text{ ⇒ 几乎必在同一块内}\\\\\text{⚠ 发布前缀缓存时必须显式传 }j+1\text{：默认会传 }K+1\\\\\text{⇒ 块边界错位 ⇒ 后来的请求会命中与真实文本不符的前缀}\\\\\text{被拒的草稿 token 压根没进过序列，所以不进前缀索引是自然结果}\\\\\text{⚠ 与 TP 相冲：验证时激活值放大 }K+1\text{ 倍 ⇒ allreduce 消息也放大 }K+1\text{ 倍}\\\\\text{本机每步通信 }224\text{ KB}\to K=5\text{ 时 }1.34\text{ MB ⇒ 无 NVLink 可能互相拖累}\end{gathered}$$"]
+    end
+
+    subgraph UPD["收尾（CPU · 卡 0）：判结束、发布满块、抢占，然后回流或流出　（没开投机时也走这一段，只是上一步没有「判接受」）"]
+        direction TB
+        U1["$$\begin{gathered}\text{判结束：命中结束符 / 到长度上限 / 命中停止串 ⇒ 标成已完成}\\\\\text{⚠ 已完成的序列必须从运行集合里摘掉（漏了会一直空转）}\\\\\text{为什么容易漏：普通回写路径末尾那句收尾很不起眼，但它必须存在}\end{gathered}$$"]
+        U2["$$\begin{gathered}\text{发布满块进前缀缓存：只发布已经填满的块}\\\\\text{半截块的内容下次还会变（再来一个 token 就写进去了）}\\\\\text{⇒ 进去会让别的请求命中错前缀；这是与投机无关的通用规则}\\\\\text{例：块大小 }256\text{ 时，一段 }128\text{ 个 token 的输出一个块都填不满 ⇒ 一个 token 都进不了缓存}\\\\\text{投机路径要按有效长度 }j+1\text{ 发布，不能按 }K+1\end{gathered}$$"]
+        U3["$$\begin{gathered}\text{抢占：本仓库没有换出、只有重算}\\\\\text{前向要的显存不够时，挑序列释放它的块 ⇒ 下次它重新 prefill}\\\\\text{释放时}【不发布】\text{进前缀缓存（之前已发布的满块仍留着，回来还可能命中）}\\\\\text{⚠ 必须把这一路带来的草稿一起丢掉}\\\\\text{否则序列带着 decode 语义的草稿回到等待队列，重新 prefill 时对不上}\end{gathered}$$"]
+        U4["$$\begin{gathered}\text{死循环保护：连续 }1024\text{ 步都调度不出东西、却还有没做完的请求}\\\\\text{⇒ 直接报错（几乎一定是 KV 池耗尽），而不是静静地空转}\end{gathered}$$"]
+        U5["$$\begin{gathered}\text{回流：这一步的产出直接成为下一步的输入（形状 }S=1\text{）}\\\\\text{回 ① 再调度一轮 —— 这就是整张图的闭环}\\\\\text{顺带一提：CPU 的活与 GPU 的前向严格交替、并不重叠}\\\\\text{唯一的例外是交接② 那一步，它刻意做成异步}\\\\\text{但控制通道那一步是阻塞的，所以实际上还是有硬停顿}\end{gathered}$$"]
+    end
+
+    H6["$$\begin{gathered}\text{交接⑥ 流出：这一步的增量 token 交给前端，流式返回用户}\\\\\text{每步都发生（这是唯一的出口），与回流并行}\\\\\text{注意内容：流出的是}【这一步新多出来的】\text{那几个 token，不是整段重发}\\\\\text{投机时一次流出 }j+1\text{ 个 —— 用户看到的是「一次蹦出好几个字」}\end{gathered}$$"]:::io
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px
+
+    HOST -->|"关着投机时走这条：普通 prefill / decode"| H1
+    S1 --> S2 --> S3
+    S0 --> S1
+    S3 -->|"把 K+1 个位置交下去"| H1
+    HOST -->|"开着投机"| S0
+    H1 --> SHP
+    SHP -->|"这一批交给四张卡"| C0a
+    SHP -->|"这一批交给四张卡"| C1a
+    C0b -->|"本卡那半张词表的查表结果"| X0
+    C1b -->|"本卡那半张词表的查表结果"| X0
+    X0 -->|"完整 $$h\,[N,hs]$$：两卡相同"| C0c
+    X0 -->|"完整 $$h\,[N,hs]$$：两卡相同"| C1c
+    C0h -->|"部分和 $$y^{(0)}$$"| X1
+    C1h -->|"部分和 $$y^{(1)}$$"| X1
+    X1 -->|"$$y$$：两卡拿到同一份"| C0i
+    X1 -->|"$$y$$：两卡拿到同一份"| C1i
+    C0k -->|"部分和 $$m^{(0)}$$"| X2
+    C1k -->|"部分和 $$m^{(1)}$$"| X2
+    X2 -->|"$$m$$：两卡拿到同一份"| C0l
+    X2 -->|"$$m$$：两卡拿到同一份"| C1l
+    C2f -->|"部分和 $$y^{(0)}$$"| X5
+    C3f -->|"部分和 $$y^{(1)}$$"| X5
+    X5 -->|"$$y$$：两卡相同"| C2g
+    X5 -->|"$$y$$：两卡相同"| C3g
+    C2i -->|"部分和 $$m^{(0)}$$"| X6
+    C3i -->|"部分和 $$m^{(1)}$$"| X6
+    X6 -->|"$$m$$：两卡相同"| C2j
+    X6 -->|"$$m$$：两卡相同"| C3j
+    C0m -->|"卡 0 send $$h,r$$"| X3
+    C1m -->|"卡 1 send $$h,r$$"| X3
+    X3 -->|"卡 2 recv $$h,r$$"| C2a
+    X3 -->|"卡 3 recv $$h,r$$"| C3a
+    C2m -->|"采样结果（还只在显存里）"| H2
+    H2 -->|"pinned 内存"| H3
+    H3 -->|"$$list[int]$$：CPU 上真的拿到了"| H4
+    H4 -->|"token 号到了 driver"| S4
+    S4 --> S5 --> S6
+    S6 --> U1
+    U1 --> U2 --> U3 --> U4 --> U5
+    U5 -->|"这一步的增量 token"| H6

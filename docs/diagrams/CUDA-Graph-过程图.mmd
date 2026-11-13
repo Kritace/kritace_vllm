@@ -1,0 +1,87 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    S0["$$\begin{gathered}\text{① 起点：一次 decode 步，在没有图的世界里长什么样}\\\\\text{CPU 逐条走 Python：查表 }\to\text{ 归一化 }\to\text{ 三合一投影 }\to\text{ 旋转 }\to\text{ 注意力 }\to\text{ 输出投影 }\to\ \cdots\\\\\text{每条语句 }\Rightarrow\text{ 一次 kernel 启动 }\Rightarrow\text{ 一次驱动提交}\\\\\text{一步 decode 提交 }N\approx 2500\text{ 次（}28\text{ 层 }\times\text{ 每层约 }90\text{ 次）}\\\\\text{每次提交固定花 }t_{\text{launch}}\approx 6.9\sim 7.5\,\mu s\text{，与这一步算多算少无关}\\\\T_{\text{fixed}}=N\cdot t_{\text{launch}}\approx 18.0\ \mathrm{ms}\qquad T_{\text{compute}}\approx 2.22\ \mathrm{ms}\\\\\text{【问题】0.6B 单请求 decode，八成九的时间在「提交」而不在「计算」}\\\\\text{【口径】Qwen3-0.6B · 单张 RTX 4090D · 单请求 greedy}\end{gathered}$$"]
+
+    subgraph WHY["为什么做成一张图值钱：收益的代数（这张图全部结论的源头）"]
+        direction TB
+        W1["$$\begin{gathered}\text{一步的总时间只有两项：}\\\\T_{\text{step}}=T_{\text{fixed}}+T_{\text{compute}}\\\\\text{把 }N\text{ 次提交压成 }1\text{ 次，}T_{\text{fixed}}\to t_{\text{launch}}\text{（可忽略）}\\\\\text{加速比}=\frac{T_{\text{fixed}}+T_{\text{compute}}}{t_{\text{launch}}+T_{\text{compute}}}\ \approx\ 1+\frac{T_{\text{fixed}}}{T_{\text{compute}}}\\\\\text{【判据】比值越大，图越值钱；比值 }\ll 1\text{ 时开图等于白开}\\\\\text{0.6B 单卡：}\frac{18.0}{2.22}=8.1\ \Rightarrow\ \text{上限 }9.1\times\ \text{（实测就是 }9.1\times\text{）}\\\\\text{8B 单卡：}\frac{10.6}{17.2}=0.62\ \Rightarrow\ \text{上限 }1.6\times\ \text{（实测 }1.61\times\text{）}\\\\\text{⚠ 两个反解都取自单请求，提交开销总量本来就接近}\\\\\text{差别在【能不能被重叠掉】：GPU 忙得久，提交就藏进它的影子里}\end{gathered}$$"]
+    end
+
+    subgraph CAP["启动期：捕获（引擎初始化时做一次，之后再也不做）—— 顺序不能乱"]
+        direction TB
+        C1["$$\begin{gathered}\text{C1 净化环境：把本卡清成一张白纸}\\\\\text{同步：排空本卡所有已排队的异步工作}\\\\\text{清缓存：把空闲显存块还给驱动}\\\\\text{为什么：捕获期间任何一次新的显存分配}\\\\\text{都会落进这张图的【私有池】，重放时被覆盖}\\\\T_{\text{pending}}=0,\qquad M_{\text{cached}}\to 0\end{gathered}$$"]
+        C2["$$\begin{gathered}\text{C2 铺安全值：把槽位表整片填成 }-1\\\\\text{slot}\leftarrow -1\quad\text{（全片，不是只填空位）}\\\\\text{⚠ 为什么填 }-1\text{ 而不是 }0\\\\\text{填 }0\text{ 会把热身写进去的数据留在第 0 页}\\\\\text{后面真实请求的注意力会把它当成「前文」读进去}\\\\\text{⇒ 输出静默错乱，且极难定位}\end{gathered}$$"]
+        C3["$$\begin{gathered}\text{C3 取档位表：不是每个并发数都录，只录这些}\\\\\mathcal{B}=\{1,2,4,8\}\cup\{16,24,32,\dots,256\}\qquad|\mathcal{B}|=20\\\\\text{低并发密集、高并发稀疏 —— 两头的理由不同}\\\\\text{低并发：单条序列的 KV 池不能开太大，档位多了显存吃不消}\\\\\text{高并发：相邻档位的相对浪费已经很小，再加密没意义}\\\\\eta(b)=\frac{\mathrm{pad}(b)-b}{\mathrm{pad}(b)}\quad\Rightarrow\quad\eta(9)=43.75\%,\ \ \eta(240)=6.25\%\end{gathered}$$"]
+        C4["$$\begin{gathered}\text{C4 降序录制：从最大的档位开始，一路录到 }1\\\\\text{for }b\in\mathrm{sort}(\mathcal{B},\ \downarrow)\ \ \text{do capture}(b)\\\\\text{为什么必须降序：第一张图会把私有池一次性撑到最大}\\\\\text{后面所有小图复用同一块池子}\\\\\Rightarrow\ \text{显存占用不随档位数线性增长}\\\\\text{升序录的后果：每张图各要一块，}20\text{ 张图 }20\text{ 块}\end{gathered}$$"]
+        C5["$$\begin{gathered}\text{C5 每个档位走两步：先图外热身，再图内录制}\\\\\text{第一步（图外）：把完全相同的调用在普通流上跑一遍}\\\\\text{触发四件第一次才会发生的事：}\\\\\text{① 算子的即时编译 ② cuBLAS 句柄创建}\\\\\text{③ 注意力内核的工作区分配 ④ 集合通信的建链与顺序}\\\\\text{第二步（图内）：同样的调用，只记录不执行}\\\\\text{⚠ 两步必须是【完全相同的调用】—— 同样的张量、同样的参数}\\\\\text{漏掉第一步的后果：那些「第一次」的动作被录进图里，重放时不对}\end{gathered}$$"]
+        C6["$$\begin{gathered}\text{C6 录制本身发生了什么（这是理解后面所有坑的钥匙）}\\\\\text{节点}=\text{kernel 或显存操作},\qquad\text{边}=\text{依赖关系}\\\\\text{⚠ 录制【不执行】—— 所以捕获完的输出张量是未初始化的}\\\\\text{必须紧接着重放一次，否则读到的是垃圾数据}\\\\\text{⚠ 图记录的是【捕获那一刻的地址】，不是变量名}\\\\\text{所以输入必须来自预分配好的常驻缓冲，每步只改内容不改地址}\end{gathered}$$"]
+        C7["$$\begin{gathered}\text{C7 共用显存池：第一张图的池子留下来给后面用}\\\\\text{pool}\leftarrow\text{第一张图分配出来的那块}\\\\\text{后续所有图：}\mathrm{capture}(b,\ \text{pool}=\text{pool})\\\\\text{为什么：图自己不会在对象被回收时把池子还回去}\\\\\text{销毁必须显式做 —— 清空图字典 + 置空池 + 释放输出缓冲}\end{gathered}$$"]
+        C8["$$\begin{gathered}\text{C8 收尾与多卡对齐（四卡时这一步决定成败）}\\\\\text{收尾：再铺一次安全值 + 同步一次}\\\\\text{多卡：全体 rank 一次 barrier }\to\text{ 逐个档位捕获 }\to\text{ 再一次 barrier}\\\\\text{图内还有 TP 组 / PP 组各自的 barrier（两道不同的保险）}\\\\\text{⚠ 为什么非要对齐：图内含有集合通信}\\\\\text{各卡必须同时开始录，否则先到的卡会卡在热身的集合通信里}\\\\\text{（一边在等对端，一边还没开始录 —— 死等）}\end{gathered}$$"]
+    end
+
+    subgraph REP["运行期：重放（每一个 decode 步都走一遍）—— 中间那一步在图里，两头在图外"]
+        direction TB
+        R1["$$\begin{gathered}\text{R1 组表：把这一步的真实数据写进常驻缓冲}\\\\\text{六张表：本步 token 号 / 位置 / 物理槽位 / 每序列已缓存长度}\\\\\text{／ 变长前缀和 ／ 页表}\\\\\text{走锁页内存 + 非阻塞拷贝（缺一不可）}\\\\\text{锁页 ⇒ 省掉一次中转拷贝；非阻塞 ⇒ 拷贝与计算重叠}\\\\\text{⚠ 只写内容，不换地址 —— 地址一换图就找不到数据了}\end{gathered}$$"]
+        R2["$$\begin{gathered}\text{R2 补齐：真实并发数落在哪一档，多余的槽位写成安全值}\\\\\text{若 }\mathrm{pad}(b)>b\text{，则把 }[b,\ \mathrm{pad}(b))\text{ 这一段写成安全值}\\\\\text{槽位}\leftarrow -1\quad\text{（写入内核跳过它，不写 KV）}\\\\\text{长度}\leftarrow 0\quad\text{（不读任何 KV）}\\\\\text{页表}\leftarrow -1\quad\text{（查不到物理页，不会越界）}\\\\\text{⚠ 源码里【只有这三行】—— token 号与位置沿用上一轮残留值}\\\\\text{这无害：三个安全值已经保证这些行不写、不读、查不到}\\\\\text{⚠ 重放不会重写这些区域 ⇒ 一旦是非法值就会污染别的序列}\end{gathered}$$"]
+        R3["$$\begin{gathered}\text{R3 图外第一步：从上一段收激活值（PP 非首段才有）}\\\\\text{收两个张量：隐层 }h\,[b,hs]\text{ 与残差 }r\,[b,hs]\\\\\text{直接写进捕获时用的那块常驻缓冲（地址不能变）}\\\\\text{⚠ 为什么必须在图外：收是对调用方【同步阻塞】的}\\\\\text{底层用的是异步收发，但函数返回前会把所有等待走完}\\\\\text{图里放一个会阻塞主机的调用 —— 整个重放就失去意义了}\end{gathered}$$"]
+        R4["$$\begin{gathered}\text{R4 图内：一次提交，整张图跑完}\\\\\text{launch}(G)\quad\Longrightarrow\quad 6.6\,\mu s\\\\\text{对比：同一份计算在 eager 下要提交 }N\approx 2500\text{ 次}\approx 18.0\ \mathrm{ms}\\\\\text{【这就是那 }9.1\times\text{ 的全部来源】}\\\\\text{⚠ 图里的计算量一点没少 —— 少的是「提交」这个动作}\\\\\text{⚠ 图内包含集合通信节点：集合通信的提交开销也一起被消掉了}\\\\\text{这正是 TP=2 的倍数（}10.6\times\text{）反而高于单卡（}9.1\times\text{）的原因}\end{gathered}$$"]
+        R5["$$\begin{gathered}\text{R5 图外第二步：把结果发给下一段（PP 非末段才有）}\\\\\text{发两个张量 }h\,[b,hs]\text{ 与 }r\,[b,hs]\text{ 给 PP 组内下一张卡}\\\\\text{⚠ 为什么是两项：残差是两条线，少送一项下一段就算错}\\\\\text{⚠ 为什么不用广播：}hs\text{ 在 TP 组内根本没切，每卡本来就是完整的}\\\\\text{⚠ PP 点对点只有正向，没有回传激活值的反方向}\\\\\text{采样结果另走控制通道（那条传的是字节，不是张量）}\end{gathered}$$"]
+        R6["$$\begin{gathered}\text{R6 取输出：把 padding 行丢掉，还给调用方}\\\\\text{out}=\text{buf}[:b]\qquad\text{（重放写满整档，只有前 }b\text{ 行是真的）}\\\\\text{⚠ 两条路径必须算出【完全一致】的结果}\\\\\text{图可用就用图，图不可用就退回逐算子执行}\\\\\text{否则表现成「打开某个开关模型就变笨了」—— 静默错误里最难查的一类}\end{gathered}$$"]
+    end
+
+    subgraph BOUND["TP=2 × PP=2：每张卡图内图外各是什么（卡号按 全局序号 = 段号 × 2 + 段内号）"]
+        direction TB
+        B1["$$\begin{gathered}\text{图内（四张卡都有）：本段 14 层的全部算子}\\\\\text{＋ 集合通信节点 ＋ 对常驻缓冲的读写}\end{gathered}$$"]:::comm
+        B2["$$\begin{gathered}\text{图外（四张卡都有）：PP 的收与发、出 logits、采样}\\\\\text{采样不进图的三个理由：}\\\\\text{① 有随机性 ② 形状随 batch 变 ③ 贪心与采样要走不同分支}\\\\\text{而分支必须在图外决定 —— 图里的分支在重放时走错}\end{gathered}$$"]:::io
+        B3["$$\begin{gathered}\text{卡 0（段 0 · 段内 0）：跑层 0–13}\\\\\text{图内：层 0–13 ＋ 与卡 1 的两次集合通信}\\\\\text{图外：无收（首段）；发 }h,r\text{ 给卡 2}\end{gathered}$$"]:::comm
+        B4["$$\begin{gathered}\text{卡 1（段 0 · 段内 1）：跑层 0–13}\\\\\text{图内：层 0–13 ＋ 与卡 0 的两次集合通信}\\\\\text{图外：无收（首段）；发 }h,r\text{ 给卡 3}\end{gathered}$$"]:::comm
+        B5["$$\begin{gathered}\text{卡 2（段 1 · 段内 0）：跑层 14–27}\\\\\text{图内：层 14–27 ＋ 与卡 3 的两次集合通信}\\\\\text{图外：从卡 0 收 }h,r\text{；末段，采样只在卡 2 发生}\end{gathered}$$"]:::comm
+        B6["$$\begin{gathered}\text{卡 3（段 1 · 段内 1）：跑层 14–27}\\\\\text{图内：层 14–27 ＋ 与卡 2 的两次集合通信}\\\\\text{图外：从卡 1 收 }h,r\text{；本卡不采样}\end{gathered}$$"]:::comm
+    end
+
+    subgraph HARD["三条硬约束（踩中任何一条都会得到一个难查的错）"]
+        direction TB
+        H1["$$\begin{gathered}\text{H1 地址写死}\\\\\text{图记的是捕获那一刻的指针，不是变量}\\\\\text{输入必须来自预分配缓冲，输出对象必须被长期持有}\\\\\text{违反的表现：数值错乱，但不报错}\end{gathered}$$"]
+        H2["$$\begin{gathered}\text{H2 捕获期间不能有新的显存分配}\\\\\text{那块显存会落在图的私有池里，下次重放被覆盖}\\\\\text{报错原文形如：overwritten by a subsequent run}\\\\\text{典型来源：在正向里惰性地把权重转成某种精度}\end{gathered}$$"]
+        H3["$$\begin{gathered}\text{H3 必须先热身}\\\\\text{「第一次」才会发生的事会被录进图里}\\\\\text{包括：算子即时编译、句柄创建、工作区分配、建链}\\\\\text{违反的表现：重放行为与热身时不一致}\end{gathered}$$"]
+    end
+
+    subgraph COST["代价清单：开图要付的四笔账"]
+        direction TB
+        K1["$$\begin{gathered}\text{K1 显存：}20\text{ 张图共用一块私有池}\\\\\text{⚠ 本项目【没有留下实测值】，面试不要报具体数字}\\\\\text{要量很容易：开图跑一次，进程会打印一行足迹}\\\\\text{宁可说「量级未测」，也不要报一个查不到来源的数}\end{gathered}$$"]
+        K2["$$\begin{gathered}\text{K2 启动时间：每档位一次热身 ＋ 一次录制，共 }20\text{ 组}\\\\\text{⚠ 具体量级同样未测}\\\\\text{为什么必须在初始化时做完：放到第一个请求上就是一次大卡顿}\end{gathered}$$"]
+        K3["$$\begin{gathered}\text{K3 浪费率：真实并发数补到档位，多出来的行也要算一遍}\\\\\eta(9)=43.75\%\quad\eta(17)=46.88\%\quad\eta(240)=6.25\%\\\\\text{并发数越大，档位越密，这笔账越可以忽略}\end{gathered}$$"]
+        K4["$$\begin{gathered}\text{K4 两条路径的数值必须一致（最容易漏的一条）}\\\\\text{图路径与退化的逐算子路径必须算出完全相同的结果}\\\\\text{验收方式：同一批输入，开图跑一遍、关图跑一遍，逐 token 比}\\\\\text{⚠ 比的时候要挑 top-2 间隔大的文本，否则会把数值并列误判成 bug}\end{gathered}$$"]
+    end
+
+    subgraph FAIL["什么时候开图反而更慢（四类，都有实测）"]
+        direction TB
+        F1["$$\begin{gathered}\text{F1 模型变大 —— 收益被计算量摊薄}\\\\\text{0.6B：}\frac{18.0}{2.22}=8.1\Rightarrow 9.1\times\qquad\text{8B：}\frac{10.6}{17.2}=0.62\Rightarrow 1.61\times\\\\\text{机制：图消的是与计算量【无关】的固定开销}\\\\\text{8B 每步要算 }17.2\text{ ms，那点提交开销本来就被 GPU 影子盖住了}\\\\\text{旁证：eager 下每层耗时 0.6B }0.72\text{ ms vs 8B }0.77\text{ ms（几乎相等）}\\\\\text{⇒ eager 的时间根本不是计算主导；图下每层 }0.079\text{ vs }0.478\text{ ms（差 }6.0\times\text{）}\end{gathered}$$"]
+        F2["$$\begin{gathered}\text{F2 并发数变大 —— 同一个机制}\\\\\text{batch 越大，每步的真实计算越多，固定开销占比越低}\\\\\text{但大 batch 下总量仍然涨（batch 8 时 }2699\text{ 对 }354\text{）}\\\\\text{⇒ 「倍数变小」与「绝对值变大」是两件事，别混着说}\end{gathered}$$"]
+        F3["$$\begin{gathered}\text{F3 并发数正好卡在档位空档里}\\\\\text{并发 }9\text{ 落到 }16\text{ 档：白算 }43.75\%\text{ 的行}\\\\\text{并发 }240\text{ 落到 }256\text{ 档：只白算 }6.25\%\\\\\text{⇒ 档位表的疏密就是在这两笔账之间取平衡}\end{gathered}$$"]
+        F4["$$\begin{gathered}\text{F4 与编译叠加时的两种坏情况}\\\\\text{① 含张量并行时，编译自带的图后端会和集合通信打架}\\\\\text{⇒ 检测到 TP 大于 }1\text{ 就自动换成「只调优、不套图」的模式}\\\\\text{② 流水并行 ＋ 图 ＋ 编译三者同时开：直接崩}\\\\\text{报错原文：could not find 0x7f20b3a00000（十六进制地址每次不同）}\\\\\text{⇒ 这是本项目唯一一组没跑通的组合，如实记录，不猜机制}\end{gathered}$$"]
+    end
+
+    E1["$$\begin{gathered}\text{⑨ 一句话收束}\\\\\text{图把「每步提交 }2500\text{ 次」变成「每步提交 }1\text{ 次」}\\\\\text{它消掉的是【调度开销】，计算量一点没少}\\\\\text{所以：}\frac{T_{\text{fixed}}}{T_{\text{compute}}}\text{ 大的场景（小模型、单请求 decode）它是雪中送炭}\\\\\text{这个比值小的场景（大模型、大 batch）它只是锦上添花}\end{gathered}$$"]
+
+    S0 --> W1
+    W1 --> C1
+    C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7 --> C8
+    C8 --> R1
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6
+    R6 --> B1
+    B1 --> B2
+    B2 --> B3
+    B3 --> B4
+    B4 --> B5
+    B5 --> B6
+    B6 --> H1
+    H1 --> H2 --> H3
+    H3 --> K1
+    K1 --> K2 --> K3 --> K4
+    K4 --> F1
+    F1 --> F2 --> F3 --> F4
+    F4 --> E1
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px

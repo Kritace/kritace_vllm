@@ -1,0 +1,101 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    E0["$$\begin{gathered}\textbf{入口：引擎初始化，权重与 KV 池先就位}\\\\\text{紧接着决定 prefill 要不要编译 —— 一次性决定}\\\\\text{决定发生在接客之前，运行期不再改}\\\\\text{开关}=(\text{compile},\ \text{mode},\ \text{dynamic})\end{gathered}$$"]:::io
+
+
+
+
+
+    E1["$$\begin{gathered}\textbf{本轮结束：token 交回调度器}\\\\\text{一个 chunk 推进整段，不是逐 token 推进}\\\\\text{账本与 KV 占用随之更新，下一轮再决定切到哪}\\\\\text{编译图只在这个首 chunk 上生效，续 chunk 必然走 eager}\\\\\text{positions}\leftarrow\text{positions}+n_{\text{chunk}}\end{gathered}$$"]:::io
+
+    D6{"本段是流水线末段吗？"}
+
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px
+    STG1["<b>启动期 · 编译一次</b>"]
+    S1["$$\begin{gathered}\textbf{读开关：编不编、编多激进、形状动不动}\\\\\text{总开关默认关；模式默认 reduce-overhead}\\\\\text{动态形状默认 True —— 在线服务必须如此}\\\\\text{三者合起来决定编译图长什么样}\\\\\text{mode}\in\{\text{default},\ \text{reduce-overhead},\ \text{max-autotune}\}\end{gathered}$$"]
+    D1{"编译总开关打开了吗？"}
+    S2["$$\begin{gathered}\textbf{不编译：prefill 函数保持为空}\\\\\text{后续选路里第一项条件永远为假}\\\\\text{每个 chunk 都走逐算子路径，结果对但慢}\\\\\text{收益为零，但也不会踩重编译的坑}\\\\\text{prefill\_fn}=\text{None}\end{gathered}$$"]
+    S3["$$\begin{gathered}\textbf{选模式：先看有没有张量并行}\\\\\text{单卡或仅流水并行：用配置里的模式}\\\\\text{含张量并行：强制换成不套图的自动调优模式}\\\\\text{原因：模式决定套不套图，图后端与集合通信打架}\\\\\text{mode}=\text{config.compile\_mode}\end{gathered}$$"]
+    D2{"含张量并行吗？"}
+    S4["$$\begin{gathered}\textbf{含 TP：换成不套图的自动调优模式}\\\\\text{reduce-overhead 会启用 compile 自带的图后端}\\\\\text{它把集合通信也当成一个可调度节点}\\\\\text{而集合通信要求组内所有 rank 严格同序}\\\\\text{⇒ 挂死或算错，这是唯一一处强制换挡}\\\\\text{mode}=\text{max-autotune-no-cudagraphs}\end{gathered}$$"]
+    S5["$$\begin{gathered}\textbf{单卡或仅 PP：用配置里的模式}\\\\\text{默认 reduce-overhead：用套图换掉提交开销}\\\\\text{64×64 bf16、100 次调用的中位耗时（相对 eager）}\\\\\text{default 4.55×、reduce-overhead 5.01×、max-autotune 4.94×}\\\\\text{不套图的模式 2.77× —— 小张量上套图更亏}\\\\\text{4096×4096 时 reduce-overhead 反而最慢（1.08×）}\\\\\text{⇒ 模式没有普适最优，按张量规模选}\end{gathered}$$"]
+    S6["$$\begin{gathered}\textbf{选动态形状：符号形状还是写死}\\\\\text{True：长度记成符号，一次编译覆盖任意长度}\\\\\text{False：形状写死、重放更快，但新长度要重编译}\\\\\text{在线服务每个新长度都卡 2–12 秒 ⇒ 不可接受}\\\\\text{判据只有一条：运行期长度会不会变}\\\\\text{重编译代价}\approx 2\text{–}12\ \mathrm{s}\ /\ \text{新长度}\end{gathered}$$"]
+    D3{"运行期长度会变吗？"}
+    S7["$$\begin{gathered}\textbf{在线服务：动态形状必须开}\\\\\text{长度记成符号，一份代码覆盖所有取值}\\\\\text{代价是编译器要为符号形状留余量，重放略保守}\\\\\text{换来的是运行期不再出现秒级编译尖刺}\\\\\text{符号形状：}S\to s,\quad L\to\ell\end{gathered}$$"]
+    S8["$$\begin{gathered}\textbf{离线固定长度：可以关，在线用会出事}\\\\\text{形状写死，重放更快，但每个新长度重编译一次}\\\\\text{在线误用 ⇒ TTFT 偶发几秒级尖刺，看着像卡死}\\\\\text{定位：尖刺只在新长度第一次出现时发生}\\\\\text{代价}\approx 2\text{–}12\ \mathrm{s}\ /\ \text{新长度}\end{gathered}$$"]
+    S9["$$\begin{gathered}\textbf{注册不透明算子：把断图源变成黑盒}\\\\\text{不注册，前端追到数据相关分支就断图}\\\\\text{断图三笔：那段退回 eager、段间失去融合、中间落显存}\\\\\text{五个：注意力、门控激活、旋转位置、归一化、残差融合归一化}\\\\\text{注意力是最大的断图源，它单独放一个文件}\\\\\text{每个都要 register\_fake 推形状，否则编译推不出来}\\\\\text{@torch.library.custom\_op(名字,\ mutates\_args=())}\end{gathered}$$"]
+    S10["$$\begin{gathered}\textbf{声明副作用：唯一的原地算子必须交代}\\\\\text{残差融合归一化原地改写 x 与 residual，没有返回值}\\\\\text{漏写副作用 ⇒ 编译器把它当成纯函数}\\\\\text{后果一：调用可能被整个优化掉}\\\\\text{后果二：别名推断错误，与套图的显存写入冲突}\\\\\text{⇒ 捕获出一张空图、prefill 暴跌，且不报错}\\\\\text{mutates\_args}=(x,\ \text{residual})\end{gathered}$$"]
+    S11["$$\begin{gathered}\textbf{开始编译：只包住首 chunk 那一小段前向}\\\\\text{被编译的是 \_prefill\_forward，五个张量加一项中间量}\\\\\text{token 号 / 位置 / 槽位 / 变长前缀和 / 最长查询长度}\\\\\text{注意：没有 K 侧前缀和、没有页表}\\\\\text{⇒ 隐含「本轮没有前缀、Q 与 K 等长、不读历史页」}\\\\\text{torch.compile(\_prefill\_forward,\ mode,\ dynamic)}\end{gathered}$$"]
+    S12["$$\begin{gathered}\textbf{用占位输入触发一次编译}\\\\\text{编译是首次调用才发生的，必须在这里把它逼出来}\\\\\text{token 号 1…n、位置 0…n−1、前缀和 [0,n]、槽位 0…n−1}\\\\\text{n 取 256 与上下文上限的较小者：够覆盖形状又不热身太久}\\\\\text{n}=\min(256,\ \text{context\_len})\end{gathered}$$"]
+    D4{"磁盘编译缓存命中了吗？"}
+    S13["$$\begin{gathered}\textbf{热缓存命中：直接加载编译产物}\\\\\text{后端生成的图与内核缓存在磁盘上}\\\\\text{命中就直接加载，不再走一遍编译}\\\\\text{约 10 秒 —— 仍然长到必须放在初始化期}\\\\\text{生产做法：把缓存打进镜像，别让滚动更新付冷启动}\end{gathered}$$"]
+    S14["$$\begin{gathered}\textbf{冷缓存：第一次真的编一遍}\\\\\text{前端逐行建图，后端融合、选算子、自动调优}\\\\\text{同步阻塞约 25 秒，全部发生在接客之前}\\\\\text{这就是「热身」唯一的目的：把成本挪出请求路径}\\\\\text{T}_{\text{compile}}\approx 25\ \mathrm{s}\end{gathered}$$"]
+    S15["$$\begin{gathered}\textbf{热身完必须把 KV 缓存清零}\\\\\text{占位输入也是真 token，真的把 K/V 写进了缓存池}\\\\\text{不清零 ⇒ 后续请求的注意力把它当成「前文」读进去}\\\\\text{表现：能跑、不报错，只是第一批输出静默错乱}\\\\\text{位置：热身之后、返回函数之前}\\\\\text{kv\_cache.zero\_()}\end{gathered}$$"]:::comm
+    STG1 --> S1
+    STG2["<b>请求进来 · 选路</b>"]
+    R1["$$\begin{gathered}\textbf{请求进来：调度器先切 chunk}\\\\\text{按本步 token 预算切：预算够就一次算完}\\\\\text{预算不够只算到边界，剩下的下一轮接着算}\\\\\text{整条提示都在前缀缓存里 ⇒ 不做 prefill，直接转 decode}\\\\\text{chunk}=\min(\text{need},\ \text{remaining})\end{gathered}$$"]:::io
+    R2["$$\begin{gathered}\textbf{打包：本轮要喂给计算的四个量}\\\\\text{总 token 数、最长 Q、最长 K、有没有命中前缀}\\\\\text{只要有一条命中，K 就长于 Q —— 两个长度必须分开报}\\\\\text{同时把输入切成紧凑的变长序列，不留补齐}\\\\\text{n\_tokens},\ \max\_q,\ \max\_k,\ \text{has\_cache}\end{gathered}$$"]
+    D5{"编译图可用且整批无前缀命中？"}
+    R3["$$\begin{gathered}\textbf{走编译图：只喂 5 个张量}\\\\\text{token 号 / 位置 / 槽位表 / 变长前缀和 / 最长查询长度}\\\\\text{流水并行时再多一项上游隐层，签名必须逐项对齐}\\\\\text{多一个少一个都不行 —— 它只认捕获时见过的输入}\\\\\text{hidden}=\text{prefill\_fn}(ids,\ pos,\ slot,\ cu,\ \max\_q,\ it)\end{gathered}$$"]:::comm
+    R4["$$\begin{gathered}\textbf{退回 eager：自己组注意力输入}\\\\\text{命中前缀时 Q 与 K 不等长，必须分开传两条前缀和}\\\\\text{还要把页表传进去，注意力才知道历史页在哪}\\\\\text{两条路必须算出完全一致的结果}\\\\\text{cu\_q}\neq\text{cu\_k}\ \Rightarrow\ \text{block\_tables}\neq\text{None}\end{gathered}$$"]
+    R5["$$\begin{gathered}\textbf{取出口：每条序列只看最后一个位置}\\\\\text{prefill 的中间位置后面还有上下文，不用预测下一个词}\\\\\text{出口位置由变长前缀和直接算，不额外传参}\\\\\text{中间那些位置的隐层算完就扔 —— prefill 的固有浪费}\\\\\text{last}=\text{cu}[1{:}b{+}1]-1\end{gathered}$$"]
+    R6["$$\begin{gathered}\textbf{非末段：算完就往下游发}\\\\\text{它不持有词表投影头，出不了 token}\\\\\text{只把隐层与残差发给下一段，然后直接返回}\\\\\text{所以同一张编译图在每个流水段上都要各建一份}\\\\\text{hidden}\to\text{send\_intermediate(hidden)}\end{gathered}$$"]
+    STG2 --> R1
+    STG3["<b>执行 · 图内融合与图外出口</b>"]
+    X1["$$\begin{gathered}\textbf{图内执行：融合压掉的是中间张量往返}\\\\\text{朴素的归一化被拆成约 7 个内核，每个都读一遍写一遍}\\\\\text{融合后读一次、在片上算完、写回一次}\\\\\text{单层往返约 28 KiB，28 层约 784 KiB}\\\\\text{再乘序列长度 ⇒ 2048 时约 1.5 GiB}\\\\\text{注意：这是中间张量的往返流量，不是显存占用}\\\\\text{B}_{\text{total}}=L\cdot S\cdot B_{\text{norm}}\end{gathered}$$"]
+    X2["$$\begin{gathered}\textbf{算收益：短提示收益最大、长提示收敛}\\\\\text{口径：单卡 4090D、Qwen3-0.6B、单请求、两边都开 decode 图}\\\\\text{L=32：16.47 → 2.77 ms（5.94×）}\\\\\text{L=512：15.97 → 6.40 ms（2.49×）}\\\\\text{L=2048：22.94 → 22.25 ms（1.03×）}\\\\\text{端到端 TTFT：25.76 → 5.07 ms（5.1×）}\\\\\text{倍数}=1+T_{\text{固定开销}}/T_{\text{真实计算}}\end{gathered}$$"]
+    X3["$$\begin{gathered}\textbf{解释交汇：两条线的斜率不同}\\\\\text{逐算子 3.21 μs/token，编译后 9.66 μs/token}\\\\\text{编译后单个内核更大、寄存器占用更高，每 token 更贵}\\\\\text{它压掉的是截距（提交开销），动不了斜率（算力）}\\\\\text{内核数 646 → 537，拷贝数 168 → 116}\\\\\text{T}(L)=T_{\text{launch}}+\kappa\cdot L\end{gathered}$$"]
+    X4["$$\begin{gathered}\textbf{留在图外：出口与采样都不进图}\\\\\text{logits 形状随批内请求数与出口位置变 ⇒ 进图就重编译}\\\\\text{采样有随机性，且贪心与采样是数据相关分支}\\\\\text{反面教材：给采样器加编译 ⇒ 吞吐降到三分之一}\\\\\text{2957.5 → 1001 token/s：每个新批大小都要重编译}\\\\\text{净收益}=N_{\text{调用}}\Delta T-T_{\text{编译}}N_{\text{重编译}}\end{gathered}$$"]
+    X5["$$\begin{gathered}\textbf{末段落地：整批贪心就跳过词表投影}\\\\\text{全贪心直接取最大值，省掉最大的一次矩阵乘}\\\\\text{否则先算 logits，再按每请求各自的温度与截断采样}\\\\\text{采样结果先异步拷到锁页内存，真要用了才阻塞等}\\\\\text{ids}=\arg\max(\text{hidden})\end{gathered}$$"]
+    STG3 --> X1
+    STG4["<b>失败路径 · 这些事不能进图</b>"]
+    F1["$$\begin{gathered}\textbf{失败路径一：让续 chunk 也进编译图}\\\\\text{编译图 Q 与 K 共用一份前缀和，隐含两者等长}\\\\\text{又没有页表，隐含不需要读历史页}\\\\\text{命中前缀时两个假设同时破 ⇒ 结果静默算错}\\\\\text{所以前提写成「整批已缓存长度全为 0」}\\\\\text{但不能只退命中那条：图按批组织，拆开跑两次}\end{gathered}$$"]
+    F2["$$\begin{gathered}\textbf{失败路径二：把数据相关分支放进图}\\\\\text{图里没有「运行期才知道」这个概念}\\\\\text{捕获时走哪条，重放就永远走哪条}\\\\\text{现象：第一次对、后面偶尔错，或只在某些输入上错}\\\\\text{解法：分支提到图外，或用掩码代替分支}\\\\\text{本项目采样器用「贪心掩码＋where」代替分支}\end{gathered}$$"]
+    F3["$$\begin{gathered}\textbf{失败路径三：把注意力摘出图外（分段图）}\\\\\text{想法是变的留图外、不变的录进图，看着两全其美}\\\\\text{实测拷贝 168 → 267：进出图要搬静态缓冲}\\\\\text{内核 646 → 784：图内外各走一遍内核序列}\\\\\text{唯一两项都变差的方案 ⇒ 放弃，改全图编译}\\\\\text{教训：切在图边界上的搬运会把收益吃光}\end{gathered}$$"]
+    STG4 --> F1
+    E0 --> S1
+    S1 --> D1
+    D1 -->|"是"| S3
+    D1 -->|"否"| S2
+    S2 --> R4
+    S3 --> D2
+    D2 -->|"是"| S4
+    D2 -->|"否"| S5
+    S4 --> S6
+    S5 --> S6
+    S6 --> D3
+    D3 -->|"是"| S7
+    D3 -->|"否"| S8
+    S7 --> S9
+    S8 --> S9
+    S9 --> S10
+    S10 --> S11
+    S11 --> S12
+    S12 --> D4
+    D4 -->|"是"| S13
+    D4 -->|"否"| S14
+    S13 --> S15
+    S14 --> S15
+    S15 --> R1
+    R1 --> R2
+    R2 --> D5
+    D5 -->|"是"| R3
+    D5 -->|"否"| R4
+    R3 --> R5
+    R4 --> R5
+    R5 --> D6
+    D6 -->|"否"| R6
+    D6 -->|"是"| X1
+    X1 --> X2
+    X2 --> X3
+    X3 --> X4
+    X4 --> X5
+    X5 --> E1
+    R6 --> E1
+    F1 -.->|"所以整批退回"| D5
+    F2 -.->|"否则重放走错"| X4
+    F3 -.->|"被这套签名挡住"| S11
+    classDef stage fill:#fffbe6,stroke:#b8a24a,stroke-width:1.5px
+    class STG1,STG2,STG3,STG4 stage

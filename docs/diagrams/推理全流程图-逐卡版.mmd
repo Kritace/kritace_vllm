@@ -1,0 +1,184 @@
+%% 逐卡展开版：四张卡各自一串步骤（配合「推理全流程图-合并版」的骨架看）
+%% 图源：本文件。产物：推理全流程图-逐卡版.{mmd,svg,html}
+%% 口径：v6；不含 v7 量化。
+%% 布局：一段一个子图（段 0 = 卡 0 与卡 1，段 1 = 卡 2 与卡 3），两张卡的链并排放在同一个簇里，
+%%       段内共享的 allreduce 框也在这个簇内（放在两链中间）—— 兄弟卡片不各自成簇，避免簇重叠。
+flowchart TB
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px,color:#1b2b45
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px,color:#5a3a12
+    classDef warn fill:#fdf1f0,stroke:#b3564f,stroke-width:1.3px,color:#6d2a26
+
+    subgraph CPU1["ⓒ CPU：调度与组批（control/，纯 Python）"]
+        direction TB
+        E1["add_request → token_ids → Sequence → waiting 队列"]
+        E2["Scheduler.schedule()：先 decode，再 prefill（chunk 按预算切）"]
+        E3{"形态？"}
+        E3d["普通 decode：n_new = 1"]
+        E3p["普通 prefill / chunk：n_new = 本 chunk token 数"]
+        E3s["投机：先出草稿"]
+        E4{"预算 + KV 够吗？（投机按 K+1 占）"}
+        E5["不够 → preempt 队尾：丢块 + 丢草稿 + 回 waiting"]
+        E6["记账（CPU 账本）+ 组 6 张表 → pinned"]
+        E1 --> E2 --> E3
+        E3 -->|"decode"| E3d
+        E3 -->|"prefill"| E3p
+        E3 -->|"有草稿"| E3s
+        E3d --> E4
+        E3p --> E4
+        E3s --> E4
+        E4 -->|"不够"| E5
+        E4 -->|"够"| E6
+    end
+
+    subgraph SPU["⑰ 投机上半场（CPU）：草稿 + K+1 个验证位置"]
+        direction TB
+        S1["① n-gram 查表出草稿 [t₁ … t_K]：不跑模型 ⇒ 没有草稿 KV、没有概率 q"]
+        S2["② 验证输入 = [最后一个 token, t₁ … t_K]：K+1 个位置<br/>重复最后一个 token ⇒ 输出位置 i 对应「草稿 i 该不该接受」"]
+        S3["③ 定宽 width = max(K) + 1，空位 pad = −1<br/>借 prefill 通道（只有变长注意力能一次算 K+1 个 query）"]
+        S1 --> S2 --> S3
+    end
+
+    H1["交接① H2D：6 张表 pinned → 显存（non_blocking，拷完立刻返回）"]:::io
+
+    subgraph STAGE0["段 0（PP stage 0）：卡 0 与卡 1 各跑层 0–13，各持一半 Q 头与 KV 头"]
+        direction TB
+        C0a["卡 0 ｜ 入参：本步 N 个 token（四张卡同一批）"]
+        C0b["卡 0 ｜ 查表：只查本卡那半张词表（词表前半）"]
+        C0c["卡 0 ｜ norm①：作用在完整 hidden 上 ⇒ 零通信"]
+        C0d["卡 0 ｜ qkv_proj（列并行）：q[N,8,128]、k/v[N,4,128]"]
+        C0e["卡 0 ｜ q/k 头内 norm + RoPE（v 不转）"]
+        C0f["卡 0 ｜ 写本卡 KV：store_kvcache(slot_mapping)"]
+        C0g["卡 0 ｜ attention：只算本卡 8 个 Q 头"]
+        C0h["卡 0 ｜ o_proj（行并行）⇒ 只有部分和"]
+        C0i["卡 0 ｜ 残差 + norm②"]
+        C0j["卡 0 ｜ router → top-k → 本卡专家切片（中间维 1/2）⇒ 部分和"]
+        C0k["卡 0 ｜ 残差 → 下一层（14 层循环）"]
+        C0l["卡 0 ｜ send h 与 residual → 卡 2"]
+
+        X0["词表并行 allreduce：两卡的半张词表拼成完整 h"]:::comm
+        X1["层内第 1 次 allreduce：y = y⁽⁰⁾ + y⁽¹⁾"]:::comm
+        X2["层内第 2 次 allreduce：m = m⁽⁰⁾ + m⁽¹⁾"]:::comm
+
+        C1a["卡 1 ｜ 入参：与卡 0 同一批"]
+        C1b["卡 1 ｜ 查表：另外半张词表（词表后半）"]
+        C1c["卡 1 ｜ norm①：作用在完整 hidden 上"]
+        C1d["卡 1 ｜ qkv_proj（列并行）：另外 8 个 Q 头、4 个 KV 头"]
+        C1e["卡 1 ｜ q/k 头内 norm + RoPE（v 不转）"]
+        C1f["卡 1 ｜ 写本卡 KV：另外那 4 个 KV 头"]
+        C1g["卡 1 ｜ attention：另外 8 个 Q 头"]
+        C1h["卡 1 ｜ o_proj（行并行）⇒ 部分和"]
+        C1i["卡 1 ｜ 残差 + norm②"]
+        C1j["卡 1 ｜ router（同权重 ⇒ 与卡 0 同一批专家）→ 本卡专家切片 ⇒ 部分和"]
+        C1k["卡 1 ｜ 残差 → 下一层"]
+        C1l["卡 1 ｜ send h 与 residual → 卡 3"]
+
+        C0a --> C0b --> X0
+        X0 -->|"完整 h：两卡相同"| C0c
+        C0c --> C0d --> C0e --> C0f --> C0g --> C0h --> X1
+        X1 -->|"完整 y"| C0i
+        C0i --> C0j --> X2
+        X2 -->|"完整 m"| C0k
+        C0k --> C0l
+        C1a --> C1b --> X0
+        X0 -->|"完整 h"| C1c
+        C1c --> C1d --> C1e --> C1f --> C1g --> C1h --> X1
+        X1 -->|"完整 y"| C1i
+        C1i --> C1j --> X2
+        X2 -->|"完整 m"| C1k
+        C1k --> C1l
+    end
+
+    X3["交接⑤ PP 点对点下发（只有这一个方向，不经 CPU）<br/>卡 0 → 卡 2、卡 1 → 卡 3：各送 h 与 residual 两项<br/>⚠ 没有反方向：采样结果另走交接②③与控制通道回去"]:::comm
+
+    subgraph STAGE1["段 1（PP stage 1）：卡 2 与卡 3 各跑层 14–27；只有末段的卡 2 采样"]
+        direction TB
+        C2a["卡 2 ｜ recv h 与 residual ← 卡 0"]
+        C2b["卡 2 ｜ norm①：作用在完整 hidden 上 ⇒ 零通信"]
+        C2c["卡 2 ｜ qkv_proj（列并行）：q[N,8,128]、k/v[N,4,128]"]
+        C2d["卡 2 ｜ q/k 头内 norm + RoPE → 写本卡 KV"]
+        C2e["卡 2 ｜ attention：本卡 8 个 Q 头"]
+        C2f["卡 2 ｜ o_proj（行并行）⇒ 部分和"]
+        C2g["卡 2 ｜ 残差 + norm②"]
+        C2h["卡 2 ｜ router → 本卡专家切片 ⇒ 部分和"]
+        C2i["卡 2 ｜ 残差 → 下一层（14 层循环）"]
+        C2j["卡 2 ｜ 末层 norm（只有末段有这一层）"]
+        C2k["卡 2 ｜ lm_head 1024 → 151936：只算需要的位置"]
+        C2l["★ 卡 2 ｜ 采样：T → top-k → top-p → min-p；all_greedy ⇒ argmax"]
+
+        X5["层内第 1 次 allreduce：y = y⁽⁰⁾ + y⁽¹⁾"]:::comm
+        X6["层内第 2 次 allreduce：m = m⁽⁰⁾ + m⁽¹⁾"]:::comm
+
+        C3a["卡 3 ｜ recv h 与 residual ← 卡 1"]
+        C3b["卡 3 ｜ norm①：作用在完整 hidden 上"]
+        C3c["卡 3 ｜ qkv_proj（列并行）：另外 8 个 Q 头、4 个 KV 头"]
+        C3d["卡 3 ｜ q/k 头内 norm + RoPE → 写本卡 KV"]
+        C3e["卡 3 ｜ attention：另外 8 个 Q 头"]
+        C3f["卡 3 ｜ o_proj（行并行）⇒ 部分和"]
+        C3g["卡 3 ｜ 残差 + norm②"]
+        C3h["卡 3 ｜ router（与卡 2 同一批专家）→ 本卡专家切片 ⇒ 部分和"]
+        C3i["卡 3 ｜ 残差 → 下一层"]
+        C3j["卡 3 ｜ 末层 norm"]
+        C3k["卡 3 ｜ lm_head（复制）：与卡 2 逐位相同的 logits"]
+        C3l["卡 3 ｜ 本卡不算采样 —— 采样只由卡 2 做，本卡算完等下一轮"]:::warn
+
+        C2a --> C2b --> C2c --> C2d --> C2e --> C2f --> X5
+        X5 -->|"完整 y"| C2g
+        C2g --> C2h --> X6
+        X6 -->|"完整 m"| C2i
+        C2i --> C2j --> C2k --> C2l
+        C3a --> C3b --> C3c --> C3d --> C3e --> C3f --> X5
+        X5 -->|"完整 y"| C3g
+        C3g --> C3h --> X6
+        X6 -->|"完整 m"| C3i
+        C3i --> C3j --> C3k --> C3l
+    end
+
+    subgraph SPD["⑰ 投机下半场（CPU）：判接受 → 只推进 j + 1"]
+        direction TB
+        S5["④ 判接受：j = 从头起连续匹配的草稿个数<br/>emitted = draft[: j] + [argmax[j]] ⇒ 本轮产出 j + 1 个"]
+        S6["⑤ 账本只推进 j + 1：已写进 KV 的 K − j 个无效槽不回收，靠下一步覆盖"]
+        S7["⚠ 发布前缀索引必须传 j + 1（默认 K+1）⇒ 块边界错位、别人命中错前缀"]:::warn
+        S5 --> S6 --> S7
+    end
+
+    subgraph CPU2["ⓒ CPU：取回 → 回写 → 判结束 → 回流或流出"]
+        direction TB
+        R1["_update_batch：num_cached_tokens += 整段或 1"]
+        R2["_update_spec_batch：num_cached_tokens += j + 1；sync_prefix 也传 j + 1"]
+        R3["判结束（EOS / max_tokens）⇒ FINISHED + deallocate(publish=True)<br/>发布满块进前缀索引（半截块不许进）"]
+        R4["★ 已完成的序列必须从 running 摘掉"]:::warn
+        R5["EngineCoreOutput(new_token_ids, is_finished)"]
+        R1 --> R3
+        R2 --> R3
+        R3 --> R4 --> R5
+    end
+
+    H2["交接② 异步 D2H：结果拷回 pinned，拷完立刻返回"]:::io
+    H3["交接③ 同步点：read_samples 里 synchronize() —— CPU 唯一真正阻塞处"]:::io
+    H4["交接⑥ 流出：这一步的增量 token（每步都发生）"]:::io
+
+    CACHE["两套账本：ⓖ GPU 里是 KV 池 pool[2, 28, blocks × 256, 8, 128]（每 token 每层 4 KiB）<br/>ⓒ CPU 里是 BlockManager / KVManager / 前缀索引：block_table 只是「逻辑位置 → 物理块号」的整数列表"]:::comm
+    NAR["每层两次 allreduce：一次前向 = 2 × 28 + 1（词表并行）= 57 次<br/>本机实测 8 KB = 76.7 µs；0.6B 每步 ≈ 224 KB ⇒ 通信 ≈ 2.15 ms ⇒ TP=2 反而更慢（37.9 vs 单卡 49.5 tok/s）<br/>⚠ 没有「全局方差归一化」那次 —— 那是 MiniMax Lightning 层的设计，别串场"]:::comm
+    NAX["另外两个轴：DP = dp_size 份完整副本、副本之间零通信；<br/>EP = 在现有 TP rank 上切专家轴（本项目把所有 token 都算一遍、只算自己那部分专家），合并仍是一次 allreduce"]:::comm
+
+    E6 ==>|"交接①"| H1
+    S3 ==>|"K+1 个位置一起下来"| H1
+    H1 ==>|"这一批交给四张卡"| C0a
+    H1 ==> C1a
+    H1 ==> C2a
+    H1 ==> C3a
+    H1 -.->|"对照"| CACHE
+    H1 -.->|"对照"| NAR
+    H1 -.->|"对照"| NAX
+    C0l -->|"卡 0 send"| X3
+    C1l -->|"卡 1 send"| X3
+    X3 -->|"卡 2 recv"| C2a
+    X3 -->|"卡 3 recv"| C3a
+    C2l ==>|"交接②"| H2
+    H2 ==> H3
+    H3 ==>|"token 号回到 CPU"| R1
+    H3 ==> S5
+    S6 --> R2
+    S7 -.-> H4
+    R5 -.->|"④ 回流：has_unfinished ⇒ 下一步 decode 的 S = 1"| E2
+    R5 -.->|"⑥ 流出"| H4

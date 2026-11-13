@@ -1,0 +1,74 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    TOP(["主图之外的说明区 —— 这些不属于数据流，查用"])
+
+    subgraph VER["⑫ 投机为什么无损（正确性证明：输出分布必须与直接采样 target 完全一致）"]
+        direction TB
+        V1["$$\begin{gathered}\text{草稿采出 }\tilde{x}\sim q\text{，以概率 }\min\!\big(1,p(\tilde{x})/q(\tilde{x})\big)\text{ 接受}\\\\\text{（}p=\text{目标模型分布，}q=\text{草稿分布）}\end{gathered}$$"]
+        V2["$$\begin{gathered}\text{被拒后从修正分布重采样}\\\\p'(x)=\frac{\max(0,\ p(x)-q(x))}{\sum_{x'}\max(0,\ p(x')-q(x'))}\end{gathered}$$"]
+        V3["$$\begin{gathered}\text{接受这条路：}q\text{ 被完全消掉}\\\\\text{—— 这就是那个比值存在的唯一理由}\\\\q(x)\cdot\min\!\Big(1,\frac{p(x)}{q(x)}\Big)=\min\big(q(x),p(x)\big)\end{gathered}$$"]
+        V4["$$\begin{gathered}\text{被拒这条路：拒绝概率恰好等于 }p'\text{ 的分母}\\\\\text{约掉后得}\\\\1-\sum_{x'}\min(q,p)=\sum_{x'}\max(0,p-q)\ \Longrightarrow\ \max\big(0,p(x)-q(x)\big)\end{gathered}$$"]
+        V5["$$\begin{gathered}\text{两路相加：草稿的分布被完全消掉}\\\\\min(q,p)+\max(0,p-q)=p(x)\\\\\text{输出与直接采样目标模型一模一样}\end{gathered}$$"]
+        V6["$$\begin{gathered}\text{三个必答边界}\\\\\text{① }q\text{ 必须来自草稿侧：拿目标模型当 }q\Rightarrow\text{比值恒为 1}\Rightarrow\text{无条件接受}\Rightarrow\text{有偏}\\\\\text{② 查表式草稿：}q\text{ 只在该 token 上为 1}\Rightarrow\text{接受概率退化成目标模型对该 token 的认可度}\\\\\text{③ 贪心时两者都退化成只在 argmax 上为 1}\Rightarrow\text{退化成「草稿 token 是否等于目标模型的 argmax」}\\\\\text{【真数字】}p=[0.6,0.3,0.1]\mid q=[0.3,0.6,0.1]\Rightarrow\min=[0.3,0.3,0.1]\text{ 合计 }0.7\\\\\text{残差 }\max(0,p-q)=[0.3,0,0]\text{ 合计 }0.3\text{ ⇐ 草稿「过度自信」的部分必须被砍掉}\\\\\text{验算 }P(A)=0.3+0.3+0.3=0.6=p(A)\ \checkmark\end{gathered}$$"]
+        V1 --> V3
+        V1 --> V2 --> V4
+        V3 --> V5
+        V4 --> V5
+        V5 --> V6
+    end
+
+    subgraph PAR["⑬ 四种并行轴：各自切什么、要不要通信"]
+        direction TB
+        P0["$$\begin{gathered}\text{判据（全篇最该背的一句）}\\\\\text{求和（收缩）轴被切}\Rightarrow\text{部分和}\Rightarrow\text{必须归约}\\\\\text{切输出维}\Rightarrow\text{完整切片}\Rightarrow\text{零通信}\end{gathered}$$"]
+        P1["$$\begin{gathered}\text{【TP 张量并行 · 切权重】}\\\\\text{列并行切输出维}\to\text{每卡拿到完整切片}\to\text{零通信}\\\\\text{行并行切输入维}\to\text{每卡只有部分和}\to\text{必须求和}\\\\\text{hidden 全程不切，每卡都有一份完整隐层}\\\\\text{【PP 流水并行 · 切层】}\\\\\text{卡 0–1 拿层 0–13、卡 2–3 拿层 14–27；段间点对点传隐层与残差两项}\\\\\text{PP 买的是容量不是速度：装不下才用}\end{gathered}$$"]
+        P2["$$\begin{gathered}\text{【DP 数据并行 · 切请求】}\\\\\text{每张卡一个完整引擎副本，各自调度、各自 KV 池；副本之间零通信}\\\\\text{前端轮转分发请求、收齐结果}\\\\\text{不省显存、不降延迟；卡必须同构；并发数要 }\geq\text{ 副本数}\\\\\text{【EP 专家并行 · 切专家】}\\\\\text{卡 0 放专家 0–29 的完整权重、卡 1 放 30–59}\\\\\text{对比 TP 切法：TP 是每卡都算全部 60 个专家、只把中间维切一半（一半算力白算）}\\\\\text{EP 出口仍要一次求和：每卡只算到部分专家，是部分和}\end{gathered}$$"]
+        P1 ~~~ P2
+    end
+
+    subgraph SHAPE["⑭ 同一条路径的三种形状（【这是「prefill 与 decode 差在哪」的答案】）"]
+        direction TB
+        H1["$$\begin{gathered}\text{prefill / decode / 投机验证 走的是同一条路径，只是形状不同}\\\\\text{同一个前向、同一套权重、同一套 KV 布局}\\\\\text{差的是三件事：喂几个位置、从哪几个位置取结果、账本推进多少}\\\\\text{⚠ chunked prefill 与投机验证都走 prefill 通道，但语义完全不同（见下三格逐项对照）}\end{gathered}$$"]
+        H2["$$\begin{gathered}\text{【prefill（含分块）】}\\\\\text{调度通道：prefill}\\\\\text{输入：整段 prompt，或其中一块}\\\\\text{注意力：变长版，}causal=True\\\\\text{累积长度表：每次 }+=\text{ 已算长度（含已缓存）}\\\\\text{取结果的位置：每序列最后一个 —— 其余位置全白算}\\\\\text{回传元素数：每请求 1 个}\\\\\text{走图重放：不走}\\\\\text{账本推进：}+=\text{ 本步算的位置数}\end{gathered}$$"]
+        H3["$$\begin{gathered}\text{【decode（普通逐 token）】}\\\\\text{调度通道：decode}\\\\\text{输入：每序列 1 个位置}\\\\\text{注意力：带 KV 缓存的单步版}\\\\\text{掩码：天然因果（只有 1 个 query）}\\\\\text{取结果的位置：唯一那位}\\\\\text{回传元素数：每请求 1 个}\\\\\text{走图重放：走（固定形状 + 补齐）}\\\\\text{账本推进：}+=1\end{gathered}$$"]
+        H4["$$\begin{gathered}\text{【投机验证】}\\\\\text{调度通道：prefill（调度器把带草稿的序列挪过去的）}\\\\\text{输入：最后一个 token 加 }K\text{ 个草稿 }=K+1\text{ 个位置}\\\\\text{注意力：同 prefill 的变长版}\\\\\text{掩码：同 prefill，}causal=True\\\\\text{⇒ 一次前向与逐位自回归的结果逐位相同（这点与 beam search 不同）}\\\\\text{取结果的位置：每一个位置都要用 —— 只有这条通道这样}\\\\\text{回传元素数：定宽 }\times\text{ 请求数（不是请求数！算错会把接受长度钳到 1）}\\\\\text{走图重放：不走}\\\\\text{账本推进：}+=j+1\text{（接受的 }j\text{ 个 + 目标模型修正的那 1 个）}\end{gathered}$$"]
+        H1 ~~~ H2 ~~~ H3 ~~~ H4
+    end
+
+    subgraph IFACE["⑮ 六处接口：CPU 与 GPU 在哪里交接"]
+        direction TB
+        I0["$$\begin{gathered}\text{【一句话】CPU 决定「算谁」，GPU 决定「算出什么」}\\\\\text{两者的活严格交替，唯一例外是接口② 刻意做成异步}\\\\\text{必须在 CPU 上：调度 / 抢占 / KV 账本 / 查表式草稿 / 接受长度判定 / 前缀缓存发布与命中 / 采样参数归一化}\\\\\text{必须在 GPU 上：逐层前向 / KV 写入 / 采样}\end{gathered}$$"]
+        I1["$$\begin{gathered}\text{【① 下发 —— CPU → GPU】}\\\\\text{六张输入表：输入 id、位置、KV 槽映射、每序列缓存长度、query 与 key 的累积长度、块表}\\\\\text{从锁页内存整块拷到显存，}non\_blocking\text{，发完不等}\end{gathered}$$"]
+        I2["$$\begin{gathered}\text{【② 回传（异步）—— GPU → CPU】}\\\\\text{采样出的 token id；decode 每请求 1 个，投机每请求定宽个}\\\\\text{挂在独立拷贝流上、记一个事件，拷完立刻返回}\\\\\text{—— 全程唯一的重叠点就在这}\\\\\text{【③ 同步点 —— CPU 真正等在这里】}\\\\\text{下一步要读回传值时才等那个事件；此刻 CPU 空转、GPU 还在跑}\end{gathered}$$"]
+        I3["$$\begin{gathered}\text{【④ 回流 —— CPU 触发 GPU】}\\\\\text{下一步的输入（decode 时 }S=1\text{），进入下一轮步}\end{gathered}$$"]
+        I4["$$\begin{gathered}\text{【⑤ 段间点对点 —— GPU → GPU，只有 PP 才有】}\\\\\text{张量：隐层与残差两项}\\\\\text{不经主机内存；⚠ 只有这一个方向，没有反向回传}\end{gathered}$$"]
+        I5["$$\begin{gathered}\text{【⑥ 流出 —— CPU → 外部】}\\\\\text{每步都发生；输出的是这一步新多出来的那几个 token，不是整段重发}\end{gathered}$$"]
+        I0 ~~~ I1 ~~~ I2 ~~~ I3 ~~~ I4 ~~~ I5
+    end
+
+    subgraph CACHE["⑯ 两套缓存与显存账（贯穿全程；账本在 CPU，数据在显存）"]
+        direction TB
+        C1["$$\begin{gathered}\text{KV 缓存：存每层的 }k,v\text{（每个 rank 只存自己那几个 KV 头）}\\\\\text{每 token 字节}=2\cdot L\cdot h_{kv}\cdot d_h\cdot 2\text{B}=2\times28\times8\times128\times2=112\ \text{KiB}\\\\\text{一条 4096 上下文}=448\ \text{MiB，随长度线性增长}\end{gathered}$$"]
+        C2["$$\begin{gathered}\text{块账本（纯 CPU）：逻辑位置}\to\text{物理块号；块是分配单元}\\\\\text{① 满块才进前缀索引 —— 半截块的内容下次还可能变}\\\\\text{发布出去会让别人命中错前缀，是静默错误}\\\\\text{② 抢占 = 释放块（不发布）+ 丢掉草稿}\\\\\text{本仓库没有换出台、只有重算；抢占时不发布，先前已发布的满块仍在索引里，回来可能命中}\\\\\text{⚠ 必须把草稿一并丢掉：否则序列带着 decode 语义的草稿回到等待队列，}\\\\\text{重新 prefill 时草稿长度与已缓存前缀对不上}\\\\\text{③ 块是「归还给缓存」还是「直接释放」，取决于它有没有完整身份}\end{gathered}$$"]
+        C3["$$\begin{gathered}\text{投机留下的多余槽位}\\\\\text{验证写了 }K+1\text{ 个位置，只有前 }j+1\text{ 个有效}\\\\\text{剩下 }K-j\text{ 个不回收、不搬家，靠下一步写入自然覆盖}\end{gathered}$$"]
+        C4["$$\begin{gathered}\text{【显存账】}\\\\\text{每 token 112 KiB ⇒ 一个块（256 个位置）}=28\ \text{MiB}\\\\\text{权重 bf16：绑定词表}\approx1.19\ \text{GB，词表不绑}\approx1.50\ \text{GB}\\\\\text{默认最多 256 条并发 ⇒ 若每条都跑满 4096 上下文要 }256\times448\ \text{MiB}\approx112\ \text{GiB}\\\\\text{远超单卡显存 —— 所以实际能并发几条，由「按显存占用比例自动算出的块数」}\\\\\text{与「各条的长度」共同决定，而不是由并发上限决定}\end{gathered}$$"]
+        C5["$$\begin{gathered}\text{【兜底保护】调度器连续 1024 步返回空、却仍有未完成请求 ⇒ 直接报错}\\\\\text{这几乎一定是 KV 池耗尽；不报就会静默死循环}\end{gathered}$$"]
+        C1 ~~~ C2 ~~~ C3 ~~~ C4 ~~~ C5
+    end
+
+    subgraph NOTE["⑰ 说明区"]
+        direction TB
+        N1["$$\begin{gathered}\text{【符号】}N\text{ 本步 token 总数}\mid hs\text{ 隐层宽}\mid H\text{ 个 Q 头}\mid h_{kv}\text{ KV 头数}\mid d_h\text{ 头维}\\\\\mid ahs=H\cdot d_h\mid F\text{ 前馈中间维}\mid V\text{ 词表}\mid L\text{ 层数}\mid K\text{ 草稿长度}\\\\\text{卡内的量一律写成除法：}H/tp\text{ 本卡 Q 头、}ahs/tp\text{ 本卡注意力宽、}F/tp\text{ 本卡专家中间维}\\\\\text{【两套真实数值】}\\\\\text{Qwen3-0.6B — }V\,151936\mid hs\,1024\mid L\,28\mid H\,16\mid h_{kv}\,8\mid d_h\,128\mid F\,3072\mid \epsilon\,10^{-6}\\\\\text{Qwen1.5-MoE-A2.7B — 60 专家取 4}\mid\text{激活 2.7B / 总 14.3B}\mid\text{无共享专家}\\\\\text{【卡号约定】全局号}=\text{PP 段号}\times tp+\text{段内 TP 号}\end{gathered}$$"]
+        N2["$$\begin{gathered}\text{【报数必须带三要素（模型 / 硬件 / 并发）】}\\\\\text{以下实测机器是 2}\times\text{RTX 4090D 24G（无 NVLink，点对点不支持，跨卡必须过主机内存）}\\\\\text{【图重放】是 decode 的最大杠杆}\\\\\text{0.6B 单卡 }49.5\to449.7\text{ token/s（}9.1\times\text{），消掉的是每步与计算量无关的固定提交开销}\\\\\text{口诀：图重放减「提交次数」，算子融合减「算子个数」，两件事不要混}\end{gathered}$$"]
+        N3["$$\begin{gathered}\text{【四个并行轴的真实账】（同一台机器）}\\\\\text{TP：eager 下 TP=2 }37.9\text{ 比单卡 }49.5\text{ 慢 }23\%\text{，因为每步通信串行约 }2.15\text{ ms（小消息单次约 }77\ \mu\text{s）}\\\\\text{PP：eager 下 PP=2 }79.9\text{ 比单卡快 }61\%\text{；但开图后 PP=2 }336.6\text{ 相对单卡 }449.7\text{ 只剩 }0.75\times\\\\\text{DP：0.6B 并发 32、共 4096 token，dp1 }710.0\to\text{dp2 }1331.4\text{（}1.88\times\text{）；开图后 }4784\to8260\text{（}1.73\times\text{）}\\\\\text{EP：与图重放负交互 —— 同口径 }201.0\to161.3\text{ token/s（}-19.8\%\text{）}\\\\\text{但逐算子执行时方向相反（}29.3\to30.0\text{，}+2.5\%\text{）}\Rightarrow\text{是「EP}\times\text{图重放」这个组合负，不是 EP 慢}\end{gathered}$$"]
+        N4["$$\begin{gathered}\text{【投机的收益完全由文本重复度决定】}\\\\\text{（本仓库 v6，0.6B，单请求 64 token，查表式草稿）}\\\\\text{高重复 }48.7\to285.9=5.87\times\mid\text{自然散文 }1.75\times\mid\text{代码 }1.16\times\\\\\text{—— 相差 5 倍，引用时必须注明输入文本}\\\\\text{每步期望产出 }E=(1-\alpha^{K+1})/(1-\alpha)\text{（}\alpha\text{ 为接受率）}\\\\\text{高重复 }\alpha\approx1\Rightarrow\text{每步吃满 }K+1\text{；代码 }K=4\text{ 就见顶（}E=2.61\text{ 峰值，}K=6\text{ 掉到 }2.20\text{）}\\\\\text{【投机对首 token 是负收益】官方 8B 口径 }27.3\text{ ms}\to73.3\text{ ms（}2.68\times\text{ 变差）}\\\\\text{因为无论接受多少，都要先付草稿 }K\text{ 次前向}+\text{目标模型验证 }K+1\text{ 个位置的代价，而首 token 只等第一个}\end{gathered}$$"]
+        N5["$$\begin{gathered}\text{【三个「算错就静默出错」的地方】}\\\\\text{① 投机回传的是 定宽}\times\text{请求数 个元素（不是请求数），算错会把接受长度钳到 1、收益全消失}\\\\\text{② 定宽补齐的两端必须一致且填 }-1\\\\\text{③ 投机那一步不拉新 prefill（会让定宽切片整体错位）}\\\\\text{【「贪心投机与基线逐 token 相同」只在 top-2 logits 间隔大于数值误差时成立】}\\\\\text{自然散文上实测到过完全并列（两个 token 都是 }+20.250\text{）；bf16 下这点差距被两个注意力算子的累加顺序抹平}\\\\\text{用「逐 token 相同」验收时必须选间隔大的文本，否则会把数值并列误判成 bug}\\\\\text{【两对容易混的概念】}\\\\\text{图重放的补齐槽（槽位 }-1\text{，从来没写过）vs 投机多余槽（真写过，靠下一步覆盖）}\\\\\text{调度级分块（把长 prompt 拆成多次前向，本项目没有）vs 算子内分块（一次前向内把序列切块）}\\\\\text{本图只覆盖 v0–v6。v7 量化已排除在计划外，图里没有任何量化环节}\end{gathered}$$"]
+        N6["$$\begin{gathered}\text{【本轮补进来的四条，都是原来漏掉的】}\\\\\text{① 六处接口只画了一处（段间点对点），下发 / 回传 / 同步点 / 流出四处全缺}\\\\\text{② 采样只写到「从 logits 采一个」，没写 softmax 除温度 → top-k → top-p → min-p 这条链}\\\\\text{③ 每步收尾（判结束 / 发布满块 / 抢占 / 死循环保护）全缺}\\\\\text{④ 三种形状对照全缺 —— 而这正是「prefill 与 decode 到底差在哪」的答案}\\\\\text{【还有一处是错的】原来把段间点对点画成了「有反向回传」，实际只有正向一项}\\\\\text{采样出的 token 不走段间点对点，走的是控制通道（只传字节、在 CPU 上、用 Gloo 而非 NCCL）}\\\\\text{因为一次调度结果里有几十个形状不固定的字段，而张量通信只能传张量}\end{gathered}$$"]
+        N1 ~~~ N2 ~~~ N3 ~~~ N4 ~~~ N5 ~~~ N6
+    end
+
+    TOP ~~~ V1
+    TOP ~~~ P0
+    TOP ~~~ H1
+    TOP ~~~ I0
+    TOP ~~~ C1
+    TOP ~~~ N1

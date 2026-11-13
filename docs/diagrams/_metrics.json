@@ -1,0 +1,267 @@
+{
+ "viewBox": [
+  -20,
+  -12,
+  12014.578125,
+  5491.1875
+ ],
+ "scale": 0.1317,
+ "nodes": 80,
+ "clusters": 12,
+ "edgePaths": 65,
+ "foreignObjects": 157,
+ "clipped": 0,
+ "clippedDetail": [],
+ "crossings": 2,
+ "crossingPairs": [
+  [
+   "mmd_render_0-L_CP_LAY_0",
+   "mmd_render_0-L_ATT2_AT1_0",
+   1
+  ],
+  [
+   "mmd_render_0-L_EP_LAY_0",
+   "mmd_render_0-L_ATT2_AT1_0",
+   1
+  ]
+ ],
+ "longestEdge": 3303,
+ "nodeOverlapArea": 0,
+ "clusterOverlapArea": 0,
+ "shapeClips": 0,
+ "shapeClipDetail": [],
+ "minMarginR": 30,
+ "minMarginL": 30,
+ "tightestShapes": [
+  {
+   "id": "mmd_render_0-flowchart-N1-173",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    63,
+    269,
+    260,
+    230
+   ],
+   "tail": "草稿长度卡内的量一律写除法（H/tp、ahs/tp）"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N2-174",
+   "shapeW": 329.3,
+   "foW": 269.3,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    373,
+    269,
+    329,
+    230
+   ],
+   "tail": "pert_intermediate_size = 0"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N3-175",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    752,
+    293,
+    260,
+    182
+   ],
+   "tail": "，P2P NS）、torch 2.8.0+cu128"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N4-176",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    1062,
+    269,
+    260,
+    230
+   ],
+   "tail": " KB 实测延迟 76.7 µs × 2 × 28）"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N5-177",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    1372,
+    257,
+    260,
+    254
+   ],
+   "tail": "有 0.75× —— CG 一开 PP 的优势就没了"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N6-178",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    1682,
+    293,
+    260,
+    182
+   ],
+   "tail": " 5.87×｜自然散文 1.75×｜代码 1.16×"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N7-179",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    1992,
+    281,
+    260,
+    206
+   ],
+   "tail": "en] = 2.61 峰值，K=6 掉到 2.20）"
+  },
+  {
+   "id": "mmd_render_0-flowchart-N8-180",
+   "shapeW": 259.9,
+   "foW": 200,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    2302,
+    257,
+    260,
+    254
+   ],
+   "tail": " K+1 个位置的代价，而首 token 只等第一个"
+  }
+ ],
+ "widestShapes": [
+  {
+   "id": "mmd_render_0-flowchart-AT5-81",
+   "shapeW": 1627.9,
+   "foW": 1568,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    2928,
+    2329,
+    1628,
+    62
+   ],
+   "tail": " token 每层 2×8×128×2B=4 KiB"
+  },
+  {
+   "id": "mmd_render_0-flowchart-AT8-84",
+   "shapeW": 1158.6,
+   "foW": 1098.6,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    3988,
+    3193,
+    1159,
+    62
+   ],
+   "tail": "cache_seqlens,block_table)"
+  },
+  {
+   "id": "mmd_render_0-flowchart-S4-131",
+   "shapeW": 1079.4,
+   "foW": 1019.4,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    9214,
+    2905,
+    1079,
+    62
+   ],
+   "tail": "ens += j+1（只推进 j+1，不是 K+1）"
+  },
+  {
+   "id": "mmd_render_0-flowchart-AT1-77",
+   "shapeW": 1077.1,
+   "foW": 1017.2,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    3203,
+    1046,
+    1077,
+    62
+   ],
+   "tail": ", Hkv=8, dh=128, G=H/Hkv=2"
+  },
+  {
+   "id": "mmd_render_0-flowchart-AT7-83",
+   "shapeW": 1070.3,
+   "foW": 1010.4,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    2868,
+    3182,
+    1070,
+    85
+   ],
+   "tail": "ttn=softmax ⁣(QK⊤dh+mask)V"
+  },
+  {
+   "id": "mmd_render_0-flowchart-LN1-45",
+   "shapeW": 1013,
+   "foW": 953,
+   "marginL": 30,
+   "marginR": 30,
+   "marginT": 15,
+   "marginB": 15,
+   "rect": [
+    7190,
+    338,
+    1013,
+    92
+   ],
+   "tail": ")=x1d∑ixi2+ϵ ⁣⊙ ⁣γ, ϵ=10−6"
+  }
+ ],
+ "katexNodes": 37,
+ "mathNodes": 37,
+ "fontsLoaded": 20,
+ "fontsTotal": 20
+}

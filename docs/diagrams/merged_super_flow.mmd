@@ -1,0 +1,257 @@
+%% 完整版（超级图）：主循环 + 超级详细的调度流程（连续批处理 / chunked prefill / 前缀缓存 / 投机）
+%%                    + 四张卡逐卡展开。一张图讲完 v6 一次推理
+%% 图源：本文件。产物：推理全流程图-完整版.{mmd,svg,html}
+%% 口径：v6（v0–v6 合成），**不含 v7 量化**。
+%% 布局：段 0 / 段 1 各一个簇（簇内两卡并排、共享 allreduce 框画在中间）；注解块挂在交接① 上，不参与主干。
+flowchart TB
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px,color:#1b2b45
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px,color:#5a3a12
+    classDef warn fill:#fdf1f0,stroke:#b3564f,stroke-width:1.3px,color:#6d2a26
+    classDef note fill:#f2f7ec,stroke:#6b8f4e,stroke-width:1.2px,color:#2f4020
+
+    subgraph LOOP["ⓒ CPU 主循环：连续批处理（continuous batching）"]
+        direction TB
+        L1["add_request：prompt → token_ids → Sequence（空 prompt 抛错；超长<b>截掉开头留末尾</b>）<br/>status = WAITING；push 进 waiting <b>队尾</b>"]
+        L2["while has_unfinished()：反复调 EngineCore.step() —— 每一步就是一次「批」<br/>老请求继续 decode、新请求在同步插进来 prefill ⇒ 批的组成每步都在变"]
+        L3{"这一步有活干吗？"}
+        L4["没活但请求还没跑完 ⇒ _idle_steps += 1；连续 1024 次抛 RuntimeError<br/>（不报错就会「进程活着、GPU 0%」地空转 —— 最难查的一类故障）"]:::warn
+        L5["waiting 与 running 都空 ⇒ 退出循环，把 token 解码成文本返回"]
+        L1 --> L2 --> L3
+        L3 -->|"有活：进 ① 调度"| E2
+    L3 -->|"空转"| L4
+        L3 -->|"全跑完"| L5
+        L4 --> L2
+    end
+
+    subgraph CPU1["ⓒ CPU ①：调度与组批（control/scheduler.py，纯 Python，不碰张量）"]
+        direction TB
+        W1["waiting 队列（FIFO）：新请求 push 队尾；被抢占的 push <b>队头</b>（插队优先重来）"]
+        RQ["running 队列：decode 从<b>队头</b>取（FIFO 公平）；抢占牺牲<b>队尾</b>"]
+        E2["Scheduler.schedule()：每步调用一次，产出 ScheduledBatch(prefills, decodes)"]
+        E3{"调度策略开关：真 → 两通道混批；假 → prefill 优先<br/>mix_prefill_decode？"}
+        M1["混合模式（v3 默认）：<b>先跑 decode 通道</b>，再用剩下来的 token 预算拉 prefill"]
+        M2["prefill 优先模式：先拉 prefill（allow_trailing_partial = False）<br/>有 prefill 就<b>一个 decode 都不跑</b> ⇒ TTFT 好、ITL 差"]
+        D1["decode：从 running <b>队头</b> popleft（取出来先不放回，万一它自己被抢占就该留在 waiting）"]
+        D2["$$\begin{gathered}\text{出草稿（投机）：NgramDrafter.propose(token\_ids,} \\\\ \text{K) —— 纯 CPU 查表 n\_new =} \\\\ \text{len(draft) + 1：按 K+1 个位置预留 KV，不是 K} \\\\ n_{\mathrm{new}}=K+1\end{gathered}$$"]
+        D3{"$$\begin{gathered}\text{token 预算够不够：本步已用 + 这条要的 超过上限吗？} \\ \text{tokens\_used + n\_new >} \\\\ \text{max\_num\_batched\_tokens ？} \\\\ t_{\mathrm{used}}+n_{\mathrm{new}}\le T_{\max}\end{gathered}$$"}
+        D4["appendleft 放回 running + break：预算用完，本步不再收 decode"]
+        D5{"$$\begin{gathered}\text{KV 还有位置吗：空闲 + 可回收 够 n\_new 个槽吗？} \\ \text{kv.can\_append\_n(seq, n\_new) ？} \\\\ \mathrm{free}+\mathrm{cached}\ge n_{\mathrm{new}}\end{gathered}$$"}
+        D6["preempt(running.pop())：牺牲<b>队尾</b>序列（丢块 publish=False + 丢草稿 + 回 waiting 队头）"]
+        D7{"腾出来了吗？"}
+        D8["preempt(自己) + break：本序列回 waiting 队头，本步不带它"]
+        D9["$$\begin{gathered}\text{记账：spec\_draft\_ids = draft；} \\\\ \text{num\_scheduled\_tokens = n\_new} \\\\ \text{kv.may\_append\_n(seq, n\_new)真正占页 →decodes.append(seq)} \\\\ n_{\mathrm{new}}=K+1\ \mathrm{slots}\end{gathered}$$"]
+        D10["本步跑成的 decode 放回 running <b>队头</b>：extendleft(reversed(decodes))<br/>（不 reversed 就会打乱 FIFO 公平性；不影响正确性）"]
+        P1["prefill：遍历 waiting 的<b>快照</b> list(waiting)（循环体里会 remove）"]
+        PA{"_room()：序列数预算够吗？<br/>len(prefills) + len(decodes) < max_num_seqs"}
+        P3{"_try_alloc(seq)：block_table 非空 ⇒ 直接复用；否则 kv.can_allocate(seq)"}
+        P4["$$\begin{gathered}\text{kv.allocate(seq)：查前缀、能复用就复用，} \\\\ \text{剩下的新分配（展开见 ⑧ 前缀缓存）} \\\\ n_{\mathrm{hit}}\ \mathrm{reuse}+n_{\mathrm{new}}\ \mathrm{fresh}\end{gathered}$$"]
+        P5["页池不够 ⇒ break（FIFO：前面这条都进不来，后面只会更差）"]
+        P6["$$\begin{gathered}\text{need = num\_tokens −} \\\\ \text{num\_cached\_tokens：} \\\\ \text{这条序列还要算多少 token} \\\\ n_{\mathrm{need}}=n_{\mathrm{tok}}-n_{\mathrm{cached}}\end{gathered}$$"]
+        P7{"need ≤ 0 ？整条 prompt 都在前缀缓存里"}
+        P8["一次 prefill 都不做：status = RUNNING；waiting.remove → running.append<br/>（前缀缓存最理想的效果：直接去参加 decode）"]
+        P9{"还要继续 prefill 吗？<br/>剩余预算 < 本次 need <b>且</b> 还有预填请求 <b>且</b> 当前是 prefill 优先"}
+        P10["break：prefill 优先模式不允许「开头就被切开」的序列（延迟可预测）"]
+        P11["$$\begin{gathered}\text{chunk = min(need, remaining)：切在哪完全由 token 预算决定} \\\\ \text{num\_scheduled\_tokens = chunk；} \\\\ \text{tokens\_used += chunk →prefills.append(seq)} \\\\ c=\min(n_{\mathrm{need}},\,T_{\max}-t_{\mathrm{used}})\end{gathered}$$"]
+        P12{"$$\begin{gathered}\text{num\_cached\_tokens + chunk ==} \\\\ \text{num\_tokens ？这一块恰好把 prompt 走完} \\\\ n_{\mathrm{cached}}+c=n_{\mathrm{tok}}\end{gathered}$$"}
+        P13["need_sample = True；status = RUNNING；移入 running ⇒ <b>本步要吐第一个 token</b>"]
+        P14["need_sample = False；n_partial += 1 → <b>break</b><br/>每轮最多只允许一条「半截 prefill」：否则页池被一群没出 token 的序列占满 ⇒ 活锁"]:::warn
+        P15["本步拉不到 prefill（waiting 空或序列数满）⇒ 混合模式退化成纯 decode"]
+        P16["回到 waiting 下一条，直到：waiting 空 / token 预算用完 / 序列数满 / 页池不够"]
+        N1["$$\begin{gathered}\text{归一：有草稿的序列必须从 decodes 移到 prefills} \\\\ \text{只有 varlen attention 能一次算 K+1 个query；} \\\\ \text{decode 通道每序列只收 1 个} \\\\ W=\max_{s}K_{s}+1\end{gathered}$$"]
+        N2["产出 ScheduledBatch(prefills, decodes) 交给 Executor<br/>顺序契约：decode 的 id 在前、prefill 的在后（回写时 zip 依赖这个顺序）"]
+        W1 --> E2
+        RQ --> E2
+        E2 --> E3
+        E3 -->|"混合"| M1
+        E3 -->|"prefill 优先"| M2
+        M1 --> D1
+        M2 --> P1
+        M1 --> P15
+        P15 --> P1
+        D1 --> D2 --> D3
+        D3 -->|"超预算"| D4
+        D3 -->|"还有预算"| D5
+        D5 -->|"够"| D9
+        D5 -->|"不够"| D6 --> D7
+        D7 -->|"够用了"| D9
+        D7 -->|"腾不出来"| D8
+        D9 --> D10
+        D4 --> N1
+        D10 --> N1
+        P1 --> PA
+        PA -->|"还够"| P3
+        PA -->|"满了"| P15
+        P3 -->|"成功（新分配或复用）"| P4 --> P6
+        P3 -->|"页池不够"| P5
+        P6 --> P7
+        P7 -->|"是（全命中）"| P8 --> P16
+        P7 -->|"否"| P9
+        P9 -->|"是"| P10 --> P16
+        P9 -->|"否"| P11 --> P12
+        P12 -->|"是"| P13 --> P16
+        P12 -->|"否（只算了一块）"| P14 --> P16
+        P5 --> P16
+        P16 -->|"没有下一条了"| N1
+        N1 --> N2
+
+        subgraph SPU["⑰ 投机上半场（CPU）：先出草稿，再拼 K+1 个验证位置"]
+            direction TB
+            S1["① n-gram 查表出草稿 [t₁ … t_K]（纯 CPU、不占显存）<br/>不跑模型 ⇒ <b>没有草稿 KV、也没有概率 q</b> ⇒ 只能做贪心判定"]
+            S2["$$\begin{gathered}\text{② 验证输入 = [最后一个 token, t₁ …t\_K]，} \\\\ \text{共 K+1 个位置 重复最后一个 token ⇒ 输出位置} \\\\ \text{i 回答「草稿 i 该不该接受」} \\\\ x=[t_{0},t_{1},\dots,t_{K}]\end{gathered}$$"]
+            S3["$$\begin{gathered}\text{③ 定宽补齐：width = max(K) + 1，} \\\\ \text{空位 pad = −1 本轮不拉普通} \\\\ \text{prefill（否则定宽切片错位）} \\\\ W=\max(K)+1,\quad \mathrm{pad}=-1\end{gathered}$$"]
+            S1 --> S2 --> S3
+        end
+    end
+
+
+
+    H1["$$\begin{gathered}\text{交接① H2D：6 张表 pinned →} \\\\ \text{显存（dst.copy\_(src,} \\\\ \text{non\_blocking=True)，拷完立刻返回）} \\\\ 6\ \mathrm{tables}\to\mathrm{GPU}\end{gathered}$$"]:::io
+
+    subgraph STAGE0["段 0（PP stage 0）｜卡 0 与卡 1 各跑层 0–13，各持 8 个 Q 头与 4 个 KV 头，词表各持一半"]
+        direction TB
+        C0a["卡 0 ｜ 入参：本步 N 个 token（四张卡同一批、同一份 schedule）"]
+        C0b["$$\begin{gathered}\text{卡 0 ｜ 查表：} \\\\ \text{只查本卡那半张词表（151936 →两半，末段补零）} \\\\ V=151936,\quad V/2=75968\end{gathered}$$"]
+        C0c["$$\begin{gathered}\text{卡 0 ｜ norm①：作用在完整 hidden 上 ⇒ 零通信} \\\\ \mathrm{RMSNorm}(h)=h\,w/\sqrt{\mathrm{mean}(h^{2})+\epsilon}\end{gathered}$$"]
+        C0d["$$\begin{gathered}\text{卡 0 ｜ qkv\_proj（列并行，切输出维）：} \\\\ \text{权重在加载期就只留本卡的行区间} \\\\ q:[N,8,128],\quad k,v:[N,4,128]\end{gathered}$$"]
+        C0e["$$\begin{gathered}\text{卡 0 ｜ q/k 头内 norm + RoPE（v 不转；} \\\\ \text{位置来自 positions）} \\\\ q,k\leftarrow\mathrm{RoPE}(q,k),\ v\ \mathrm{no}\end{gathered}$$"]
+        C0f["$$\begin{gathered}\text{卡 0 ｜ 写本卡 KV：} \\\\ \text{store\_kvcache(slot\_mapping)} \\\\ \text{slot\_mapping 由 block\_table换算（唯一换算入口）} \\\\ \mathrm{slot}=f(\mathrm{block\_table})\end{gathered}$$"]
+        C0g["$$\begin{gathered}\text{卡 0 ｜ attention：只算本卡 8 个 Q 头 prefill 走} \\\\ \text{varlen（cu\_seqlens\_q/k）；} \\\\ \text{decode 走 paged（cache\_seqlens +block\_tables）} \\\\ \mathrm{softmax}\!\left(QK^{\top}/\sqrt{d}\right)V\end{gathered}$$"]
+        C0h["$$\begin{gathered}\text{卡 0 ｜ o\_proj（行并行，切求和维）⇒ 只有部分和} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]
+        C0i["卡 0 ｜ 残差 + norm②"]
+        C0j["$$\begin{gathered}\text{卡 0 ｜ router（复制权重）→top-k →} \\\\ \text{本卡专家切片 ⇒ 部分和 非 EP：按中间维切；EP：} \\\\ \text{按专家轴切（每卡算全部 token、只算自己专家）} \\\\ m=\textstyle\sum_{e}g_{e}E_{e}(x)\end{gathered}$$"]
+        C0k["卡 0 ｜ 残差 → 下一层（14 层循环）"]
+        C0l["卡 0 ｜ 本段结束：send h 与 residual → 卡 2"]
+
+        X0["$$\begin{gathered}\text{词表并行 allreduce：两卡的半张词表拼成完整 h} \\\\ h=h^{(0)}+h^{(1)}\end{gathered}$$"]:::comm
+        X1["$$\begin{gathered}\text{层内第 1 次 allreduce：} \\\\ \text{y = y⁽⁰⁾ + y⁽¹⁾（o\_proj 的部分和）} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]:::comm
+        X2["$$\begin{gathered}\text{层内第 2 次 allreduce：} \\\\ \text{m = m⁽⁰⁾ + m⁽¹⁾（专家输出的部分和）} \\\\ m=m^{(0)}+m^{(1)}\end{gathered}$$"]:::comm
+
+        C1a["卡 1 ｜ 入参：与卡 0 同一批"]
+        C1b["$$\begin{gathered}\text{卡 1 ｜ 查表：另外半张词表（词表后半）} \\\\ V_{\mathrm{half}}=75968\end{gathered}$$"]
+        C1c["$$\begin{gathered}\text{卡 1 ｜ norm①：作用在完整 hidden 上} \\\\ \mathrm{RMSNorm}(h)\end{gathered}$$"]
+        C1d["$$\begin{gathered}\text{卡 1 ｜ qkv\_proj（列并行）：} \\\\ \text{另外 8 个 Q 头、} \\\\ \text{4 个 KV 头} \\\\ q:[N,8,128]\end{gathered}$$"]
+        C1e["卡 1 ｜ q/k 头内 norm + RoPE（v 不转）"]
+        C1f["卡 1 ｜ 写本卡 KV：另外那 4 个 KV 头"]
+        C1g["卡 1 ｜ attention：另外 8 个 Q 头"]
+        C1h["$$\begin{gathered}\text{卡 1 ｜ o\_proj（行并行）⇒ 部分和} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]
+        C1i["卡 1 ｜ 残差 + norm②"]
+        C1j["卡 1 ｜ router（同权重 ⇒ 路由结果与卡 0 完全一致）→ 本卡专家切片 ⇒ 部分和"]
+        C1k["卡 1 ｜ 残差 → 下一层"]
+        C1l["卡 1 ｜ 本段结束：send h 与 residual → 卡 3"]
+
+        C0a --> C0b --> X0
+        X0 -->|"完整 h：两卡相同"| C0c
+        C0c --> C0d --> C0e --> C0f --> C0g --> C0h --> X1
+        X1 -->|"完整 y"| C0i
+        C0i --> C0j --> X2
+        X2 -->|"完整 m"| C0k
+        C0k --> C0l
+        C1a --> C1b --> X0
+        X0 -->|"完整 h"| C1c
+        C1c --> C1d --> C1e --> C1f --> C1g --> C1h --> X1
+        X1 -->|"完整 y"| C1i
+        C1i --> C1j --> X2
+        X2 -->|"完整 m"| C1k
+        C1k --> C1l
+    end
+
+    X3["交接⑤ PP 点对点下发（只有这一个方向，不经 CPU）<br/>卡 0 → 卡 2、卡 1 → 卡 3：各送 h 与 residual 两项<br/>⚠ PP 是 lockstep 切层、不是 1F1B；没有反方向 —— 采样结果另走交接②③与控制通道回去"]:::comm
+
+    subgraph STAGE1["段 1（PP stage 1）｜卡 2 与卡 3 各跑层 14–27；只有末段的卡 2 负责采样"]
+        direction TB
+        C2a["卡 2 ｜ recv h 与 residual ← 卡 0"]
+        C2b["卡 2 ｜ norm①：作用在完整 hidden 上 ⇒ 零通信"]
+        C2c["$$\begin{gathered}\text{卡 2 ｜ qkv\_proj（列并行）：} \\\\ q:[N,8,128],\quad k,v:[N,4,128]\end{gathered}$$"]
+        C2d["卡 2 ｜ q/k 头内 norm + RoPE → 写本卡 KV"]
+        C2e["$$\begin{gathered}\text{卡 2 ｜ attention：本卡 8 个 Q 头} \\\\ \mathrm{softmax}\!\left(QK^{\top}/\sqrt{d}\right)V\end{gathered}$$"]
+        C2f["$$\begin{gathered}\text{卡 2 ｜ o\_proj（行并行）⇒ 部分和} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]
+        C2g["卡 2 ｜ 残差 + norm②"]
+        C2h["$$\begin{gathered}\text{卡 2 ｜ router → 本卡专家切片 ⇒ 部分和} \\\\ m=\textstyle\sum_{e}g_{e}E_{e}(x)\end{gathered}$$"]
+        C2i["卡 2 ｜ 残差 → 下一层（14 层循环）"]
+        C2j["卡 2 ｜ 末层 norm（只有末段有这一层）"]
+        C2k["$$\begin{gathered}\text{卡 2 ｜ lm\_head 1024 →151936：} \\\\ \text{只算需要的位置 prefill 取} \\\\ \text{cu\_seqlens\_q[1:]-1（每序列最后位置）；decode 每序列 1 个} \\\\ 1024\to151936\end{gathered}$$"]
+        C2l["$$\begin{gathered}\text{★ 卡 2 ｜ 采样：T →top-k →top-p →min-p；} \\\\ \text{all\_greedy ⇒ argmax 跳过整个词表投影} \\\\ \text{采样参数按请求打包进 kernel，避免 GPU→CPU 同步} \\\\ p=\mathrm{filter}(z/T)\end{gathered}$$"]
+
+        X5["$$\begin{gathered}\text{层内第 1 次 allreduce：y = y⁽⁰⁾ + y⁽¹⁾} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]:::comm
+        X6["$$\begin{gathered}\text{层内第 2 次 allreduce：m = m⁽⁰⁾ + m⁽¹⁾} \\\\ m=m^{(0)}+m^{(1)}\end{gathered}$$"]:::comm
+
+        C3a["卡 3 ｜ recv h 与 residual ← 卡 1"]
+        C3b["卡 3 ｜ norm①：作用在完整 hidden 上"]
+        C3c["$$\begin{gathered}\text{卡 3 ｜ qkv\_proj（列并行）：} \\\\ \text{另外 8 个 Q 头、} \\\\ \text{4 个 KV 头} \\\\ q:[N,8,128]\end{gathered}$$"]
+        C3d["卡 3 ｜ q/k 头内 norm + RoPE → 写本卡 KV"]
+        C3e["卡 3 ｜ attention：另外 8 个 Q 头"]
+        C3f["$$\begin{gathered}\text{卡 3 ｜ o\_proj（行并行）⇒ 部分和} \\\\ y=y^{(0)}+y^{(1)}\end{gathered}$$"]
+        C3g["卡 3 ｜ 残差 + norm②"]
+        C3h["卡 3 ｜ router（与卡 2 同一批专家）→ 本卡专家切片 ⇒ 部分和"]
+        C3i["卡 3 ｜ 残差 → 下一层"]
+        C3j["卡 3 ｜ 末层 norm"]
+        C3k["卡 3 ｜ lm_head（复制所有权重）：logits 与卡 2 逐位相同"]
+        C3l["卡 3 ｜ 本卡不算采样 —— 采样只由卡 2 做，本卡算完等下一轮"]:::warn
+
+        C2a --> C2b --> C2c --> C2d --> C2e --> C2f --> X5
+        X5 -->|"完整 y"| C2g
+        C2g --> C2h --> X6
+        X6 -->|"完整 m"| C2i
+        C2i --> C2j --> C2k --> C2l
+        C3a --> C3b --> C3c --> C3d --> C3e --> C3f --> X5
+        X5 -->|"完整 y"| C3g
+        C3g --> C3h --> X6
+        X6 -->|"完整 m"| C3i
+        C3i --> C3j --> C3k --> C3l
+    end
+
+    subgraph SPD["⑰ 投机下半场（CPU）：判接受 → 只推进 j + 1"]
+        direction TB
+        S5["$$\begin{gathered}\text{④ 判接受：j = 从头起连续匹配的草稿个数（贪心） emitted =} \\\\ \text{draft[: j] + [argmax[j]] ⇒} \\\\ \text{本轮产出 j + 1 个 token} \\\\ j=\mathrm{match\ length},\quad \mathrm{emit}=j+1\end{gathered}$$"]
+        S6["$$\begin{gathered}\text{⑤ 账本只推进 j + 1：} \\\\ \text{已写进 KV 的 K − j 个无效槽不回收，靠下一步覆盖} \\\\ K-j\end{gathered}$$"]
+        S7["⚠ 发布前缀索引必须传 j + 1（默认 K+1）⇒ 块边界错位、后人命中错前缀"]:::warn
+        S5 --> S6 --> S7
+    end
+
+    subgraph CPU2["ⓒ CPU ③：采样回传 → 回写 → 判结束 → 谁退出（批的组成在这里变）"]
+        direction TB
+        Q1["$$\begin{gathered}\text{read\_samples(n\_p, n\_d)：\_copy\_event.synchronize() ←CPU 唯一真正阻塞的地方 按元素数切片：} \\\\ \text{p\_ids = \_sample\_cpu[n\_d :n\_d+n\_p]、} \\\\ \text{d\_ids = \_sample\_cpu[:n\_d]prefill 通道的元素数 = 普通 prefill每序列 1 个 / 投机验证 = 请求数 × 定宽} \\\\ p=s[n_{d}:n_{d}+n_{p}],\quad d=s[0:n_{d}]\end{gathered}$$"]
+        Q2["Scheduler.update()：<b>先 decodes、后 prefills</b> 两组回写（顺序与执行器约定一致）"]
+        R1["普通批：num_cached_tokens += num_scheduled_tokens；kv.sync_prefix(seq)<br/>sync_prefix <b>只把写满的整块</b>登记进前缀索引（半截块不许进）"]
+        Q3{"chunked prefill 的中间块吗？<br/>这是 prefill <b>且</b> 已缓存 < prompt 长度"}
+        Q4["continue：中间块<b>不采样、也不判结束</b>（后面还有上下文，没有「下文」可供预测）"]
+        R2["$$\begin{gathered}\text{投机批：有效长度是 j + 1，不是 num\_scheduled\_tokens} \\\\ \text{kv.sync\_prefix(seq,num\_new\_tokens = j + 1)（传 K+1} \\\\ \text{会发布出错误前缀） 被接受的 token 不必回传 ——它们就是草稿的前 j 个，调度器手里本来就有} \\\\ n_{\mathrm{cached}}\mathrel{+}=j+1\end{gathered}$$"]
+        R3["判结束：采到 EOS（ignore_eos 时无视）或 num_completion_tokens ≥ max_tokens<br/>⇒ status = FINISHED + kv.deallocate(seq, publish = True)"]
+        R4["★ 已完成的序列<b>必须从 running 摘掉</b>（用集合重建 deque）<br/>少了这步：下一步会重新调度它、重新挂草稿，组包断言 len(token_ids) == num_cached_tokens + 1 随即失败"]:::warn
+        R5["EngineCoreOutput(seq_id, new_token_ids, is_finished) → 上层流式吐出"]
+        Q5["批的组成变了：这一步退出若干（FINISHED）、waiting 里又进来若干 ⇒ 下一步的批不同"]
+        Q1 --> Q2
+        Q2 --> R1
+        Q2 --> R2
+        R1 --> Q3
+        Q3 -->|"是"| Q4
+        Q3 -->|"否"| R3
+        R2 --> R3
+        R3 --> R4 --> R5 --> Q5
+        Q4 --> Q5
+    end
+
+
+    H2["交接② 异步 D2H：结果拷回 pinned，拷完立刻返回"]:::io
+    H3["交接③ 同步点：read_samples 里 synchronize() —— CPU 唯一真正阻塞处"]:::io
+    H4["交接④⑤⑥ 流出 / 回流：这一步的增量 token 交给上层；has_unfinished ⇒ 下一步继续"]:::io
+
+    N2 ==>|"交接①"| H1
+    N2 -->|"这一步是投机验证"| S1
+    S3 ==>|"K+1 个位置一起下来"| H1
+    H1 ==>|"这一批交给四张卡"| C0a
+    H1 ==> C1a
+    H1 ==> C2a
+    H1 ==> C3a
+    C0l -->|"卡 0 send"| X3
+    C1l -->|"卡 1 send"| X3
+    X3 -->|"卡 2 recv"| C2a
+    X3 -->|"卡 3 recv"| C3a
+    C2l ==>|"交接②"| H2
+    H2 ==> H3
+    H3 ==>|"token 号回到 CPU"| Q1
+    H3 ==> S5
+    S6 --> R2
+    S7 -.-> H4
+    R5 -.->|"回流：还有请求没跑完 ⇒ 回到主循环下一步"| L2
+    R5 ==>|"流出"| H4

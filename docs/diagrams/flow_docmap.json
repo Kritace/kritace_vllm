@@ -1,0 +1,1332 @@
+{
+ "L1": {
+  "cid": "C2",
+  "k": 19,
+  "head": "ch-c2-h3-4",
+  "headtitle": "2.2.2 add_request：文本到 Sequence，只有一个入口",
+  "text": "超长 prompt 截掉开头、保留末尾（engine.py:212），理由是生成任务里「最近的上下文」信息量最大（engine.py:203-205 的注释）。",
+  "hl": [
+   "engine",
+   "超长"
+  ],
+  "block": "超长 prompt 截掉开头、保留末尾（engine.py:212），理由是生成任务里「最近的上下文」信息量最大（engine.py:203-205 的注释）。代价很实在：system prompt / 最前面的指令可能被整段丢掉，而且只发一条 warning，调用方不接管就会被静默降级。 夹紧 max_tokens 用的是 dataclasses.replace（engine.py:226）而不是就地赋值，原因是 SamplingParams 是外部传进来的对象、可能被多条请求共享（engine.py:224-2…",
+  "score": 58.9
+ },
+ "L2": {
+  "cid": "C2",
+  "k": 25,
+  "head": "ch-c2-h3-5",
+  "headtitle": "2.2.3 step 第 1 段：调度，产出 ScheduledBatch",
+  "text": "为什么混合调度不是「prefill 优先」？ scheduler.py:8-9 把权衡写清楚了：只跑 decode 时 batch 小、GPU 用不满；",
+  "hl": [],
+  "block": "为什么 decode 与 prefill 要分成两个 list？因为下游形状不同：decode 每条序列 1 个 query、prefill 每条多个（model_runner.py:195 的注释明说「两批分开跑：decode 每条 1 个 token、prefill 每条多个 token，形状本就不同」）。把它们硬塞进一个张量就得 padding 到同一长度，白白浪费算力。 为什么混合调度不是「prefill 优先」？scheduler.py:8-9 把权衡写清楚了：只跑 decode 时 batch 小、GP…",
+  "score": 38.68
+ },
+ "L3": {
+  "cid": "C2",
+  "k": 21,
+  "head": "ch-c2-h3-5",
+  "headtitle": "2.2.3 step 第 1 段：调度，产出 ScheduledBatch",
+  "text": "在干什么：EngineCore.step 第一行就问调度器本步跑谁（core.py:150）。",
+  "hl": [
+   "enginecore"
+  ],
+  "block": "在干什么：EngineCore.step 第一行就问调度器本步跑谁（core.py:150）。调度器按 mix_prefill_decode 选策略：混合模式下先尽力排 decode，再用剩余 token 预算拉 prefill（scheduler.py:289-296）；一条 decode 都没排成（刚启动、或 running 空）就退化成 prefill 优先（scheduler.py:298-299）。",
+  "score": 16.43
+ },
+ "L4": {
+  "cid": "C2",
+  "k": 25,
+  "head": "ch-c2-h3-5",
+  "headtitle": "2.2.3 step 第 1 段：调度，产出 ScheduledBatch",
+  "text": "这是一个把静默死锁转成显式异常的设计：代价是理论上存在「合法地空转 1024 步」的场景会被误报，收益是这类故障不再需要靠 GPU 利用率去猜。",
+  "hl": [
+   "地空转"
+  ],
+  "block": "为什么 decode 与 prefill 要分成两个 list？因为下游形状不同：decode 每条序列 1 个 query、prefill 每条多个（model_runner.py:195 的注释明说「两批分开跑：decode 每条 1 个 token、prefill 每条多个 token，形状本就不同」）。把它们硬塞进一个张量就得 padding 到同一长度，白白浪费算力。 为什么混合调度不是「prefill 优先」？scheduler.py:8-9 把权衡写清楚了：只跑 decode 时 batch 小、GP…",
+  "score": 36.1
+ },
+ "L5": {
+  "cid": "C2",
+  "k": 55,
+  "head": "ch-c2-h3-10",
+  "headtitle": "2.2.8 便捷入口与资源释放",
+  "text": "generate_batch 用 dict 按 seq_id 收结果、最后按入队顺序取回（engine.py:290-296），保证返回顺序与输入一致——连续批处理下完成顺序与入队顺序必然不同。",
+  "hl": [
+   "generate",
+   "engine"
+  ],
+  "block": "游标用 seq.num_completion_tokens 而不是 len(seq.token_ids) 判断（engine.py:332-333）：后者包含 prompt，会导致重复吐 prompt 的 token。 逐 token 解码（engine.py:339）意味着多字节字符会被切开，边界处短暂出现乱码；真实服务通常靠「保留尾部若干字节」缓解（engine.py:337-338）。这里选择了实现简单。 generate_batch 用 dict 按 seq_id 收结果、最后按入队顺序取回（engine.…",
+  "score": 48.54
+ },
+ "W1": {
+  "cid": "C4",
+  "k": 37,
+  "head": "ch-c4-h2-10",
+  "headtitle": "4.3 关键不变量与易错点",
+  "text": "新请求与抢占回来的序列都从 waiting 队头消费（src/control/scheduler.py:135、src/control/scheduler.py:200），抢占却专门弹 running 队尾（src/control/scheduler.py:159），被抢占者用 appendleft…",
+  "hl": [
+   "scheduler",
+   "新请求",
+   "队尾",
+   "队头"
+  ],
+  "block": "waiting 是 FIFO，running 的队尾是\"牺牲位\"。新请求与抢占回来的序列都从 waiting 队头消费（src/control/scheduler.py:135、src/control/scheduler.py:200），抢占却专门弹 running 队尾（src/control/scheduler.py:159），被抢占者用 appendleft 放回 waiting 队首（src/control/scheduler.py:318）——即\"刚被牺牲的下轮优先重来\"。队列顺序被注释明确标为有语义（s…",
+  "score": 36.91
+ },
+ "RQ": {
+  "cid": "C4",
+  "k": 37,
+  "head": "ch-c4-h2-10",
+  "headtitle": "4.3 关键不变量与易错点",
+  "text": "这是靠 _schedule_mixed 的\"有草稿就不拉新请求\"（src/control/scheduler.py:295-296）与 schedule() 的统一搬运（src/control/scheduler.py:104-107）共同保证的。",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "waiting 是 FIFO，running 的队尾是\"牺牲位\"。新请求与抢占回来的序列都从 waiting 队头消费（src/control/scheduler.py:135、src/control/scheduler.py:200），抢占却专门弹 running 队尾（src/control/scheduler.py:159），被抢占者用 appendleft 放回 waiting 队首（src/control/scheduler.py:318）——即\"刚被牺牲的下轮优先重来\"。队列顺序被注释明确标为有语义（s…",
+  "score": 27.75
+ },
+ "E2": {
+  "cid": "C4",
+  "k": 9,
+  "head": "ch-c4-h3-3",
+  "headtitle": "4.2.1 入口：选策略，并把带草稿的序列挪进 prefill 通道",
+  "text": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。",
+  "hl": [
+   "schedule"
+  ],
+  "block": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。 关键代码：src/control/scheduler.py:97-108",
+  "score": 52.84
+ },
+ "E3": {
+  "cid": "C4",
+  "k": 9,
+  "head": "ch-c4-h3-3",
+  "headtitle": "4.2.1 入口：选策略，并把带草稿的序列挪进 prefill 通道",
+  "text": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。",
+  "hl": [
+   "schedule"
+  ],
+  "block": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。 关键代码：src/control/scheduler.py:97-108",
+  "score": 39.98
+ },
+ "M1": {
+  "cid": "C4",
+  "k": 13,
+  "head": "ch-c4-h3-4",
+  "headtitle": "4.2.2 混合策略：先做 decode，再用剩余预算喂 prefill",
+  "text": "在干什么：_schedule_mixed 先以 0 预算调用 _schedule_decode（语义是\"先做、不设上限\"），若本步确实排上了 decode，就把剩余 token 预算交给 _pull_prefill_chunk；",
+  "hl": [
+   "_schedule_mixed"
+  ],
+  "block": "在干什么：_schedule_mixed 先以 0 预算调用 _schedule_decode（语义是\"先做、不设上限\"），若本步确实排上了 decode，就把剩余 token 预算交给 _pull_prefill_chunk；一条 decode 都没排上时退化成 _schedule_prefill_first。 关键代码：src/control/scheduler.py:284-299",
+  "score": 41.47
+ },
+ "M2": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "allow_trailing_partial 是两种策略仅有的行为差异：prefill 优先模式传 False（src/control/scheduler.py:273），保证一轮里的 prefill 都是完整的、延迟好估算；",
+  "hl": [
+   "scheduler",
+   "优先模式"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 63.42
+ },
+ "D1": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；",
+  "hl": [
+   "队头"
+  ],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 46.74
+ },
+ "D2": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；",
+  "hl": [
+   "出草稿"
+  ],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 67.03
+ },
+ "D3": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；",
+  "hl": [],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 69.3
+ },
+ "D4": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；",
+  "hl": [],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 43.96
+ },
+ "D5": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；",
+  "hl": [],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 39.75
+ },
+ "D6": {
+  "cid": "C4",
+  "k": 25,
+  "head": "ch-c4-h3-7",
+  "headtitle": "4.2.5 抢占：recompute，而不是 swap",
+  "text": "在干什么：当页池不够时，_schedule_decode 从 running 队尾弹出序列并 preempt，直到当前序列能放下；",
+  "hl": [
+   "preempt",
+   "队尾",
+   "序列"
+  ],
+  "block": "在干什么：当页池不够时，_schedule_decode 从 running 队尾弹出序列并 preempt，直到当前序列能放下；若把 running 榨干还不行，就连当前这条也一起 preempt 掉。被抢占的序列回到 waiting 队首，从头再来。 关键代码：src/control/scheduler.py:307-318 与调用点 src/control/scheduler.py:158-163",
+  "score": 51.6
+ },
+ "D7": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 33.28
+ },
+ "D8": {
+  "cid": "C4",
+  "k": 25,
+  "head": "ch-c4-h3-7",
+  "headtitle": "4.2.5 抢占：recompute，而不是 swap",
+  "text": "在干什么：当页池不够时，_schedule_decode 从 running 队尾弹出序列并 preempt，直到当前序列能放下；",
+  "hl": [
+   "_schedule_decode"
+  ],
+  "block": "在干什么：当页池不够时，_schedule_decode 从 running 队尾弹出序列并 preempt，直到当前序列能放下；若把 running 榨干还不行，就连当前这条也一起 preempt 掉。被抢占的序列回到 waiting 队首，从头再来。 关键代码：src/control/scheduler.py:307-318 与调用点 src/control/scheduler.py:158-163",
+  "score": 55.22
+ },
+ "D9": {
+  "cid": "C4",
+  "k": 17,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数； 先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。",
+  "hl": [
+   "may_append_n"
+  ],
+  "block": "在干什么：从 running 队头逐条取序列，先调 drafter 出草稿（若有），把 n_new = len(draft) + 1 当作本步要占的 token/KV 数；先查 token 预算，再查页池，都过了才落到序列字段上并 may_append_n 预留页。 关键代码：src/control/scheduler.py:138-169",
+  "score": 86.26
+ },
+ "D10": {
+  "cid": "C4",
+  "k": 19,
+  "head": "ch-c4-h3-5",
+  "headtitle": "4.2.3 decode 循环：先出草稿、再按 K+1 预留 KV、预算不够就退回",
+  "text": "第三，循环末尾用 extendleft(reversed(decodes)) 把跑成的序列放回队首，反着迭代是为了保住 FIFO 顺序（src/control/scheduler.py:171-176）——顺序不影响正确性，但影响公平性。",
+  "hl": [
+   "scheduler",
+   "放回",
+   "公平性",
+   "不影响正确性"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：三个细节值得注意。第一，草稿先算、但只有当预算与页池都通过之后才写回序列（src/control/scheduler.py:165），否则一条被退回队首的序列会带着上一轮的草稿进入下一步，KV 长度与草稿长度对不上。第二，tokens_used 对 decode 也按 n_new 计费而不是按 1，这就是投机\"多算 K 个位置\"的真实代价（投机开关默认关，理由正是它未必划算，src/config.py:109-116）。第三，循环末尾用 extendleft(reversed(…",
+  "score": 110.42
+ },
+ "P1": {
+  "cid": "C4",
+  "k": 21,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "在干什么：_pull_prefill_chunk 拿 waiting 的快照逐条尝试；",
+  "hl": [
+   "_pull_prefill_chunk",
+   "快照"
+  ],
+  "block": "在干什么：_pull_prefill_chunk 拿 waiting 的快照逐条尝试；计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；若这块正好把 prompt 走完，就置 need_sample=True 并把序列转入 running，否则留在 waiting 等下一轮，并且本轮最多只允许一个这样的\"半截\"序列。 关键代码：src/control/scheduler.py:218-258",
+  "score": 51.72
+ },
+ "PA": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 43.45
+ },
+ "P3": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/control/scheduler.py:219-226）。",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 31.71
+ },
+ "P4": {
+  "cid": "C6",
+  "k": 27,
+  "head": "ch-c6-h3-6",
+  "headtitle": "6.2.4 分配期：acquire_hit 与 pin_match",
+  "text": "在干什么：命中页从 cached 拉回 used（引用计数 +1），剩下的新分配；",
+  "hl": [
+   "剩下的新分配"
+  ],
+  "block": "在干什么：命中页从 cached 拉回 used（引用计数 +1），剩下的新分配；radix 还要把命中的树节点\"钉住\"。 关键代码：",
+  "score": 35.04
+ },
+ "P5": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "页池不够时用 break 而不是 continue（src/control/scheduler.py:209-213）：队列是 FIFO，前面的都进不来，后面的只会更差。",
+  "hl": [
+   "页池不够"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 85.92
+ },
+ "P6": {
+  "cid": "C4",
+  "k": 21,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；",
+  "hl": [],
+  "block": "在干什么：_pull_prefill_chunk 拿 waiting 的快照逐条尝试；计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；若这块正好把 prompt 走完，就置 need_sample=True 并把序列转入 running，否则留在 waiting 等下一轮，并且本轮最多只允许一个这样的\"半截\"序列。 关键代码：src/control/scheduler.py:218-258",
+  "score": 100.54
+ },
+ "P7": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 61.69
+ },
+ "P8": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/control/scheduler.py:219-226）。",
+  "hl": [
+   "scheduler",
+   "一次"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 94.46
+ },
+ "P9": {
+  "cid": "C4",
+  "k": 21,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；",
+  "hl": [
+   "剩余预算"
+  ],
+  "block": "在干什么：_pull_prefill_chunk 拿 waiting 的快照逐条尝试；计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；若这块正好把 prompt 走完，就置 need_sample=True 并把序列转入 running，否则留在 waiting 等下一轮，并且本轮最多只允许一个这样的\"半截\"序列。 关键代码：src/control/scheduler.py:218-258",
+  "score": 64.0
+ },
+ "P10": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "allow_trailing_partial 是两种策略仅有的行为差异：prefill 优先模式传 False（src/control/scheduler.py:273），保证一轮里的 prefill 都是完整的、延迟好估算；",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 97.1
+ },
+ "P11": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler",
+   "切在哪完全由",
+   "预算决定"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 103.21
+ },
+ "P12": {
+  "cid": "C4",
+  "k": 21,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；",
+  "hl": [],
+  "block": "在干什么：_pull_prefill_chunk 拿 waiting 的快照逐条尝试；计算 need = num_tokens - num_cached_tokens，按剩余预算切出 chunk = min(need, remaining)；若这块正好把 prompt 走完，就置 need_sample=True 并把序列转入 running，否则留在 waiting 等下一轮，并且本轮最多只允许一个这样的\"半截\"序列。 关键代码：src/control/scheduler.py:218-258",
+  "score": 98.35
+ },
+ "P13": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 57.29
+ },
+ "P14": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "\"每轮最多一个半截序列\"的限制（src/control/scheduler.py:193-198、src/control/scheduler.py:256-258）防的是页池被一群\"都还没出第一个 token、但都已经占着页\"的序列塞满，最后全员等页、没人出 token 的活锁。",
+  "hl": [
+   "scheduler",
+   "半截",
+   "活锁"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 115.43
+ },
+ "P15": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 48.48
+ },
+ "P16": {
+  "cid": "C4",
+  "k": 23,
+  "head": "ch-c4-h3-6",
+  "headtitle": "4.2.4 prefill 循环：按 token 预算切 chunk，不采样就不判完成",
+  "text": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src…",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：长 prompt 的 prefill 会独占一步很久，期间所有 decode 都卡住（src/control/scheduler.py:13-15），所以按 token 预算切块，切在哪完全由预算决定——这就是 chunked prefill 名字的来源（src/control/scheduler.py:236-239）。need <= 0 分支是前缀缓存最理想的结果：整条 prompt 全命中，一次前向都不用做，直接转 running 参加 decode（src/contro…",
+  "score": 67.67
+ },
+ "N1": {
+  "cid": "C4",
+  "k": 10,
+  "head": "ch-c4-h3-3",
+  "headtitle": "4.2.1 入口：选策略，并把带草稿的序列挪进 prefill 通道",
+  "text": "p, d = self._schedule_prefill_first() # 有草稿的序列必须走 prefill 通道：只有 varlen attention 能一次",
+  "hl": [
+   "只有"
+  ],
+  "block": "def schedule(self) -> ScheduledBatch: if self.mix_prefill_decode: p, d = self._schedule_mixed() else: p, d = self._schedule_prefill_first() # 有草稿的序列必须走 prefill 通道：只有 varlen attention 能一次 # 算 K+1 个 query；decode 通道的 flash_attn_with_kvcache 每序列只收 1 个。 spec = [s f…",
+  "score": 108.61
+ },
+ "N2": {
+  "cid": "C4",
+  "k": 9,
+  "head": "ch-c4-h3-3",
+  "headtitle": "4.2.1 入口：选策略，并把带草稿的序列挪进 prefill 通道",
+  "text": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。",
+  "hl": [
+   "scheduledbatch"
+  ],
+  "block": "在干什么：schedule() 按 mix_prefill_decode 二选一调用策略函数，拿到 (prefills, decodes) 两个列表后，把 decode 列表里带有 spec_draft_ids 的序列搬到 prefills 列表，再包成 ScheduledBatch 返回。 关键代码：src/control/scheduler.py:97-108",
+  "score": 32.21
+ },
+ "S1": {
+  "cid": "C11",
+  "k": 11,
+  "head": "ch-c11-h3-3",
+  "headtitle": "11.2.1 出草稿：n-gram 在 CPU 上零成本地猜 K 个",
+  "text": "if self.spec_drafter is not None: draft = self.spec_drafter.propose(seq.token_ids, self.spec_k)",
+  "hl": [
+   "propose"
+  ],
+  "block": "draft: list[int] = [] if self.spec_drafter is not None: draft = self.spec_drafter.propose(seq.token_ids, self.spec_k) n_new = len(draft) + 1",
+  "score": 35.5
+ },
+ "S2": {
+  "cid": "C11",
+  "k": 26,
+  "head": "ch-c11-h3-7",
+  "headtitle": "11.2.5 一次前向：K+1 个位置的 varlen 计算",
+  "text": "11.2.5 一次前向：K+1 个位置的 varlen 计算",
+  "hl": [
+   "个位置"
+  ],
+  "block": "11.2.5 一次前向：K+1 个位置的 varlen 计算",
+  "score": 7.59
+ },
+ "S3": {
+  "cid": "C11",
+  "k": 32,
+  "head": "ch-c11-h3-8",
+  "headtitle": "11.2.6 定宽验证与扁平回传：-1 填充与 view(-1)",
+  "text": "assert all(s.spec_draft_ids for s in seqs), ( \"spec verify 的 batch 里混入了非投机序列，定宽扁平布局会错位\"",
+  "hl": [],
+  "block": "assert all(s.spec_draft_ids for s in seqs), ( \"spec verify 的 batch 里混入了非投机序列，定宽扁平布局会错位\" ) k = max(len(s.spec_draft_ids) for s in seqs) width = k + 1 out = torch.full((len(seqs), width), -1, dtype=torch.int64, device=hidden.device) ... ids = self.model.argmax(s…",
+  "score": 32.79
+ },
+ "H1": {
+  "cid": "C7",
+  "k": 13,
+  "head": "ch-c7-h3-4",
+  "headtitle": "7.2.2 批装配：三层内存与「只写不分配」",
+  "text": "src/compute/batch.py:2-11 说明了为什么是三层内存：numpy 视图 → pinned CPU 缓冲 → GPU 张量。",
+  "hl": [
+   "batch"
+  ],
+  "block": "在干什么：把 Python 对象里的 token、位置、页表、采样参数写进 GPU 常驻缓冲。src/compute/batch.py:2-11 说明了为什么是三层内存：numpy 视图 → pinned CPU 缓冲 → GPU 张量。填数据走 numpy（切片赋值、np.arange），每个张量只做一次 copy_(..., non_blocking=True)，锁页缓冲让这次拷贝与 GPU 计算重叠。GPU 侧缓冲一次按上限开好、之后永不重新分配（src/compute/batch.py:68），地址固定也是…",
+  "score": 31.32
+ },
+ "C0a": {
+  "cid": "C7",
+  "k": 13,
+  "head": "ch-c7-h3-4",
+  "headtitle": "7.2.2 批装配：三层内存与「只写不分配」",
+  "text": "GPU 侧缓冲一次按上限开好、之后永不重新分配（src/compute/batch.py:68），地址固定也是 CG 的前提。 关键代码：src/compute/batch.py:182-197（decode 组包的主循环）。",
+  "hl": [
+   "batch"
+  ],
+  "block": "在干什么：把 Python 对象里的 token、位置、页表、采样参数写进 GPU 常驻缓冲。src/compute/batch.py:2-11 说明了为什么是三层内存：numpy 视图 → pinned CPU 缓冲 → GPU 张量。填数据走 numpy（切片赋值、np.arange），每个张量只做一次 copy_(..., non_blocking=True)，锁页缓冲让这次拷贝与 GPU 计算重叠。GPU 侧缓冲一次按上限开好、之后永不重新分配（src/compute/batch.py:68），地址固定也是…",
+  "score": 30.1
+ },
+ "C0b": {
+  "cid": "C8",
+  "k": 38,
+  "head": "ch-c8-h3-10",
+  "headtitle": "8.2.8 词表并行与出口：embedding 的哑元行、logits 的 gather 与 argmax 的两条路",
+  "text": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；",
+  "hl": [
+   "vocabparallelembedding",
+   "查表"
+  ],
+  "block": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。 关键代码（src/compute/layers/vocab_parallel.py:182-195、260-296 的骨架）：",
+  "score": 33.67
+ },
+ "C0c": {
+  "cid": "C8",
+  "k": 15,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "if residual is None: return _rmsnorm(x, self.weight, self.eps), x",
+  "hl": [
+   "rmsnorm"
+  ],
+  "block": "def forward(self, x, residual=None): if residual is None: return _rmsnorm(x, self.weight, self.eps), x _fused_add_rmsnorm(x, residual, self.weight, self.eps) return x, residual",
+  "score": 27.86
+ },
+ "C0d": {
+  "cid": "C8",
+  "k": 18,
+  "head": "ch-c8-h3-5",
+  "headtitle": "8.2.3 QKV 投影与拆分：字符串 shard_id 是加载期的唯一约定",
+  "text": "GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "hl": [],
+  "block": "在干什么：一次 GEMM 算出 [token数, (Q头数 + 2×KV头数)×头维]，再从 HF 的三个独立权重灌进同一个融合矩阵的不同区段。GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "score": 23.47
+ },
+ "C0e": {
+  "cid": "C8",
+  "k": 22,
+  "head": "ch-c8-h3-6",
+  "headtitle": "8.2.4 QK-Norm 与 RoPE：顺序、配对方式、dtype 三个静默陷阱",
+  "text": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。",
+  "hl": [
+   "头内"
+  ],
+  "block": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。v 不参与旋转。 关键代码（src/compute/models/qwen3.py:175-187，配合 src/compute/layers/ops.py:53-71）：",
+  "score": 54.16
+ },
+ "C0f": {
+  "cid": "C8",
+  "k": 27,
+  "head": "ch-c8-h3-7",
+  "headtitle": "8.2.5 attention：先写 KV、再算注意力，两条接口一把算子",
+  "text": "v_cache = pool[1, layer_id] store_kvcache(k, v,",
+  "hl": [
+   "store_kvcache"
+  ],
+  "block": "pool = meta.kv_cache k_cache = pool[0, layer_id] v_cache = pool[1, layer_id] store_kvcache(k, v, k_cache.reshape(-1, num_kv_heads, head_dim), v_cache.reshape(-1, num_kv_heads, head_dim), slot_mapping) q = q.contiguous().view(-1, num_qo_heads, head_dim) ... if …",
+  "score": 39.38
+ },
+ "C0g": {
+  "cid": "C8",
+  "k": 27,
+  "head": "ch-c8-h3-7",
+  "headtitle": "8.2.5 attention：先写 KV、再算注意力，两条接口一把算子",
+  "text": "o = flash_attn_varlen_func(q, k, v, cu_seqlens_q=..., cu_seqlens_k=...,",
+  "hl": [],
+  "block": "pool = meta.kv_cache k_cache = pool[0, layer_id] v_cache = pool[1, layer_id] store_kvcache(k, v, k_cache.reshape(-1, num_kv_heads, head_dim), v_cache.reshape(-1, num_kv_heads, head_dim), slot_mapping) q = q.contiguous().view(-1, num_qo_heads, head_dim) ... if …",
+  "score": 25.1
+ },
+ "C0h": {
+  "cid": "C8",
+  "k": 30,
+  "head": "ch-c8-h3-8",
+  "headtitle": "8.2.6 输出投影与 FFN：TP 的一对\"切-合\"",
+  "text": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "hl": [
+   "行并行"
+  ],
+  "block": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "score": 56.93
+ },
+ "C0i": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 38.42
+ },
+ "C0j": {
+  "cid": "C10",
+  "k": 35,
+  "head": "ch-c10-h3-7",
+  "headtitle": "10.2.5 每次 step 第一步：压平形状 + 门控打分 + top-k 路由",
+  "text": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。 关键代码：src/moe/block.py:44-62 是 route_experts…",
+  "hl": [
+   "route_experts",
+   "sparsemoeblock",
+   "forward"
+  ],
+  "block": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。 关键代码：src/moe/block.py:44-62 是 route_experts 的全部。",
+  "score": 64.51
+ },
+ "C0k": {
+  "cid": "C9",
+  "k": 17,
+  "head": "ch-c9-h3-7",
+  "headtitle": "9.2.5 每层的真实顺序：融合残差 → Attention → 融合残差 → MLP",
+  "text": "如果写成「归一化后再加残差」就是 Post-LN，数值完全不同且不报错（src/compute/models/qwen3.py:227-229）。",
+  "hl": [
+   "残差"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：两处 norm 的语义相同，都是「先加残差再归一化」（Pre-LN）；如果写成「归一化后再加残差」就是 Post-LN，数值完全不同且不报错（src/compute/models/qwen3.py:227-229）。return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；循环结束后由 self.norm(h, residual)[0] 收尾（:294）。替代方案是标准 H…",
+  "score": 50.47
+ },
+ "C0l": {
+  "cid": "C3",
+  "k": 66,
+  "head": "ch-c3-h3-9",
+  "headtitle": "3.2.7 PP 边界：收发为什么留在图外",
+  "text": "为什么收发必须在图外（src/compute/model_runner.py:108-110）：\"图外 recv → 图内 forward（读写静态 buffer）→ 图外 send\"。",
+  "hl": [],
+  "block": "为什么收发必须在图外（src/compute/model_runner.py:108-110）：\"图外 recv → 图内 forward（读写静态 buffer）→ 图外 send\"。如果整段 recv+层+send 录成一张图，NCCL P2P 就成了图内的一个节点，调度无法与图解耦，且 P2P 的稳定性不如集合通信。代价是一次额外的 copy_：图内算完必须 self._pp_send[\"hidden_states\"][:bs].copy_(out[\"hidden_states\"])（:243-244）把结果…",
+  "score": 28.65
+ },
+ "X0": {
+  "cid": "C3",
+  "k": 77,
+  "head": "ch-c3-h3-10",
+  "headtitle": "3.2.8 TP 通信：三位一体的维度搬运",
+  "text": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=dev…",
+  "hl": [],
+  "block": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=device), dim=0).min().item()。为什么取最小值（注释 :132）：块号必须在每张卡上含义一致，否则同一块号在不同 rank 上指向不同的物理页，KV 就写串了。注意 dim=0 在这里命中 all_g…",
+  "score": 15.54
+ },
+ "X1": {
+  "cid": "C3",
+  "k": 77,
+  "head": "ch-c3-h3-10",
+  "headtitle": "3.2.8 TP 通信：三位一体的维度搬运",
+  "text": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=dev…",
+  "hl": [],
+  "block": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=device), dim=0).min().item()。为什么取最小值（注释 :132）：块号必须在每张卡上含义一致，否则同一块号在不同 rank 上指向不同的物理页，KV 就写串了。注意 dim=0 在这里命中 all_g…",
+  "score": 15.54
+ },
+ "X2": {
+  "cid": "C3",
+  "k": 77,
+  "head": "ch-c3-h3-10",
+  "headtitle": "3.2.8 TP 通信：三位一体的维度搬运",
+  "text": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=dev…",
+  "hl": [],
+  "block": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=device), dim=0).min().item()。为什么取最小值（注释 :132）：块号必须在每张卡上含义一致，否则同一块号在不同 rank 上指向不同的物理页，KV 就写串了。注意 dim=0 在这里命中 all_g…",
+  "score": 15.54
+ },
+ "C1a": {
+  "cid": "C7",
+  "k": 13,
+  "head": "ch-c7-h3-4",
+  "headtitle": "7.2.2 批装配：三层内存与「只写不分配」",
+  "text": "src/compute/batch.py:2-11 说明了为什么是三层内存：numpy 视图 → pinned CPU 缓冲 → GPU 张量。",
+  "hl": [],
+  "block": "在干什么：把 Python 对象里的 token、位置、页表、采样参数写进 GPU 常驻缓冲。src/compute/batch.py:2-11 说明了为什么是三层内存：numpy 视图 → pinned CPU 缓冲 → GPU 张量。填数据走 numpy（切片赋值、np.arange），每个张量只做一次 copy_(..., non_blocking=True)，锁页缓冲让这次拷贝与 GPU 计算重叠。GPU 侧缓冲一次按上限开好、之后永不重新分配（src/compute/batch.py:68），地址固定也是…",
+  "score": 6.37
+ },
+ "C1b": {
+  "cid": "C8",
+  "k": 38,
+  "head": "ch-c8-h3-10",
+  "headtitle": "8.2.8 词表并行与出口：embedding 的哑元行、logits 的 gather 与 argmax 的两条路",
+  "text": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；",
+  "hl": [
+   "vocabparallelembedding",
+   "查表"
+  ],
+  "block": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。 关键代码（src/compute/layers/vocab_parallel.py:182-195、260-296 的骨架）：",
+  "score": 34.95
+ },
+ "C1c": {
+  "cid": "C8",
+  "k": 15,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "if residual is None: return _rmsnorm(x, self.weight, self.eps), x",
+  "hl": [
+   "rmsnorm"
+  ],
+  "block": "def forward(self, x, residual=None): if residual is None: return _rmsnorm(x, self.weight, self.eps), x _fused_add_rmsnorm(x, residual, self.weight, self.eps) return x, residual",
+  "score": 27.86
+ },
+ "C1d": {
+  "cid": "C8",
+  "k": 18,
+  "head": "ch-c8-h3-5",
+  "headtitle": "8.2.3 QKV 投影与拆分：字符串 shard_id 是加载期的唯一约定",
+  "text": "GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "hl": [],
+  "block": "在干什么：一次 GEMM 算出 [token数, (Q头数 + 2×KV头数)×头维]，再从 HF 的三个独立权重灌进同一个融合矩阵的不同区段。GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "score": 19.11
+ },
+ "C1e": {
+  "cid": "C8",
+  "k": 24,
+  "head": "ch-c8-h3-6",
+  "headtitle": "8.2.4 QK-Norm 与 RoPE：顺序、配对方式、dtype 三个静默陷阱",
+  "text": "表强制 fp32 靠 _apply 钩子兜底（src/compute/layers/rotary.py:67-79），不能改成 forward 里惰性 .float()——CUDA Graph 会复用那块临时内存，下次重放时被覆盖，报错文本就是 \"overwritten by a subsequen…",
+  "hl": [
+   "forward"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：QK-Norm 的归一化维度必须是 head_dim 而不是 hidden_size，因此必须在 reshape 之后做；而且它发生在 RoPE 之前（src/compute/models/qwen3.py:180-184、148-151）。RoPE 走\"预计算表 + 查表\"，表按 head_dim 建、所有层共用（src/compute/layers/rotary.py:4-7）；频率只取偶数下标、旋转时把前后两半配对，这是 NeoX 风格，与 GPT-J 的相邻配对不同，混…",
+  "score": 23.0
+ },
+ "C1f": {
+  "cid": "C7",
+  "k": 19,
+  "head": "ch-c7-h3-6",
+  "headtitle": "7.2.4 前向：attention 上下文与「先写 KV 再算」",
+  "text": "在干什么：模型内部每一层都要拿 KV cache、页表、长度。",
+  "hl": [],
+  "block": "在干什么：模型内部每一层都要拿 KV cache、页表、长度。这一层不把这些参数逐层透传，而是用全局上下文注入：attention_context(self._meta) 把 AttnMetadata(kv_cache=...) 装进模块级变量（src/compute/model_runner.py:229、src/compute/model_runner.py:81）。src/compute/model_runner.py:226-228 的理由是省掉一整条透传链。 关键代码：src/compute/layers…",
+  "score": 16.7
+ },
+ "C1g": {
+  "cid": "C8",
+  "k": 27,
+  "head": "ch-c8-h3-7",
+  "headtitle": "8.2.5 attention：先写 KV、再算注意力，两条接口一把算子",
+  "text": "o = flash_attn_with_kvcache(q.unsqueeze(1), k_cache, v_cache, cache_seqlens=cache_seqlens,",
+  "hl": [],
+  "block": "pool = meta.kv_cache k_cache = pool[0, layer_id] v_cache = pool[1, layer_id] store_kvcache(k, v, k_cache.reshape(-1, num_kv_heads, head_dim), v_cache.reshape(-1, num_kv_heads, head_dim), slot_mapping) q = q.contiguous().view(-1, num_qo_heads, head_dim) ... if …",
+  "score": 12.18
+ },
+ "C1h": {
+  "cid": "C8",
+  "k": 30,
+  "head": "ch-c8-h3-8",
+  "headtitle": "8.2.6 输出投影与 FFN：TP 的一对\"切-合\"",
+  "text": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "hl": [
+   "行并行"
+  ],
+  "block": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "score": 56.93
+ },
+ "C1i": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/compute/layers/layernorm.py:41-49）。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 13.02
+ },
+ "C1j": {
+  "cid": "C10",
+  "k": 35,
+  "head": "ch-c10-h3-7",
+  "headtitle": "10.2.5 每次 step 第一步：压平形状 + 门控打分 + top-k 路由",
+  "text": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。",
+  "hl": [
+   "sparsemoeblock",
+   "forward"
+  ],
+  "block": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。 关键代码：src/moe/block.py:44-62 是 route_experts 的全部。",
+  "score": 38.23
+ },
+ "C1k": {
+  "cid": "C9",
+  "k": 17,
+  "head": "ch-c9-h3-7",
+  "headtitle": "9.2.5 每层的真实顺序：融合残差 → Attention → 融合残差 → MLP",
+  "text": "return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；",
+  "hl": [
+   "下一层"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：两处 norm 的语义相同，都是「先加残差再归一化」（Pre-LN）；如果写成「归一化后再加残差」就是 Post-LN，数值完全不同且不报错（src/compute/models/qwen3.py:227-229）。return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；循环结束后由 self.norm(h, residual)[0] 收尾（:294）。替代方案是标准 H…",
+  "score": 17.98
+ },
+ "C1l": {
+  "cid": "C3",
+  "k": 65,
+  "head": "ch-c3-h3-9",
+  "headtitle": "3.2.7 PP 边界：收发为什么留在图外",
+  "text": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。",
+  "hl": [
+   "_send_intermediate",
+   "modelrunner"
+  ],
+  "block": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。_recv_intermediate 的 static 参数（:178）是关键：buf = self._pp_recv if static else self._make_pp_buffer(n)（:180）—— CUDA Graph 重放必须用捕获时那块固定地址的缓冲，…",
+  "score": 20.54
+ },
+ "X3": {
+  "cid": "C3",
+  "k": 65,
+  "head": "ch-c3-h3-9",
+  "headtitle": "3.2.7 PP 边界：收发为什么留在图外",
+  "text": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。",
+  "hl": [
+   "_pp_dst",
+   "modelrunner"
+  ],
+  "block": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。_recv_intermediate 的 static 参数（:178）是关键：buf = self._pp_recv if static else self._make_pp_buffer(n)（:180）—— CUDA Graph 重放必须用捕获时那块固定地址的缓冲，…",
+  "score": 31.89
+ },
+ "C2a": {
+  "cid": "C3",
+  "k": 66,
+  "head": "ch-c3-h3-9",
+  "headtitle": "3.2.7 PP 边界：收发为什么留在图外",
+  "text": "为什么收发必须在图外（src/compute/model_runner.py:108-110）：\"图外 recv → 图内 forward（读写静态 buffer）→ 图外 send\"。",
+  "hl": [],
+  "block": "为什么收发必须在图外（src/compute/model_runner.py:108-110）：\"图外 recv → 图内 forward（读写静态 buffer）→ 图外 send\"。如果整段 recv+层+send 录成一张图，NCCL P2P 就成了图内的一个节点，调度无法与图解耦，且 P2P 的稳定性不如集合通信。代价是一次额外的 copy_：图内算完必须 self._pp_send[\"hidden_states\"][:bs].copy_(out[\"hidden_states\"])（:243-244）把结果…",
+  "score": 28.38
+ },
+ "C2b": {
+  "cid": "C8",
+  "k": 15,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "if residual is None: return _rmsnorm(x, self.weight, self.eps), x",
+  "hl": [
+   "rmsnorm"
+  ],
+  "block": "def forward(self, x, residual=None): if residual is None: return _rmsnorm(x, self.weight, self.eps), x _fused_add_rmsnorm(x, residual, self.weight, self.eps) return x, residual",
+  "score": 27.86
+ },
+ "C2c": {
+  "cid": "C8",
+  "k": 18,
+  "head": "ch-c8-h3-5",
+  "headtitle": "8.2.3 QKV 投影与拆分：字符串 shard_id 是加载期的唯一约定",
+  "text": "GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "hl": [],
+  "block": "在干什么：一次 GEMM 算出 [token数, (Q头数 + 2×KV头数)×头维]，再从 HF 的三个独立权重灌进同一个融合矩阵的不同区段。GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "score": 19.11
+ },
+ "C2d": {
+  "cid": "C8",
+  "k": 22,
+  "head": "ch-c8-h3-6",
+  "headtitle": "8.2.4 QK-Norm 与 RoPE：顺序、配对方式、dtype 三个静默陷阱",
+  "text": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。",
+  "hl": [
+   "头内"
+  ],
+  "block": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。v 不参与旋转。 关键代码（src/compute/models/qwen3.py:175-187，配合 src/compute/layers/ops.py:53-71）：",
+  "score": 14.03
+ },
+ "C2e": {
+  "cid": "C8",
+  "k": 27,
+  "head": "ch-c8-h3-7",
+  "headtitle": "8.2.5 attention：先写 KV、再算注意力，两条接口一把算子",
+  "text": "o = flash_attn_with_kvcache(q.unsqueeze(1), k_cache, v_cache, cache_seqlens=cache_seqlens,",
+  "hl": [],
+  "block": "pool = meta.kv_cache k_cache = pool[0, layer_id] v_cache = pool[1, layer_id] store_kvcache(k, v, k_cache.reshape(-1, num_kv_heads, head_dim), v_cache.reshape(-1, num_kv_heads, head_dim), slot_mapping) q = q.contiguous().view(-1, num_qo_heads, head_dim) ... if …",
+  "score": 12.18
+ },
+ "C2f": {
+  "cid": "C8",
+  "k": 30,
+  "head": "ch-c8-h3-8",
+  "headtitle": "8.2.6 输出投影与 FFN：TP 的一对\"切-合\"",
+  "text": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。",
+  "hl": [
+   "行并行"
+  ],
+  "block": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "score": 44.79
+ },
+ "C2g": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/compute/layers/layernorm.py:41-49）。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 13.02
+ },
+ "C2h": {
+  "cid": "C10",
+  "k": 35,
+  "head": "ch-c10-h3-7",
+  "headtitle": "10.2.5 每次 step 第一步：压平形状 + 门控打分 + top-k 路由",
+  "text": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。",
+  "hl": [
+   "sparsemoeblock",
+   "forward"
+  ],
+  "block": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。 关键代码：src/moe/block.py:44-62 是 route_experts 的全部。",
+  "score": 33.87
+ },
+ "C2i": {
+  "cid": "C9",
+  "k": 17,
+  "head": "ch-c9-h3-7",
+  "headtitle": "9.2.5 每层的真实顺序：融合残差 → Attention → 融合残差 → MLP",
+  "text": "return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；",
+  "hl": [
+   "下一层"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：两处 norm 的语义相同，都是「先加残差再归一化」（Pre-LN）；如果写成「归一化后再加残差」就是 Post-LN，数值完全不同且不报错（src/compute/models/qwen3.py:227-229）。return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；循环结束后由 self.norm(h, residual)[0] 收尾（:294）。替代方案是标准 H…",
+  "score": 21.72
+ },
+ "C2j": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "调用范式见 src/compute/models/qwen3.py:224-230：\"先加残差再归一化\"，写成反过来就是 Post-LN，数值完全不同（src/compute/models/qwen3.py:227-229）。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 30.59
+ },
+ "C2k": {
+  "cid": "C8",
+  "k": 38,
+  "head": "ch-c8-h3-10",
+  "headtitle": "8.2.8 词表并行与出口：embedding 的哑元行、logits 的 gather 与 argmax 的两条路",
+  "text": "出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。",
+  "hl": [
+   "parallellmhead",
+   "forward"
+  ],
+  "block": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。 关键代码（src/compute/layers/vocab_parallel.py:182-195、260-296 的骨架）：",
+  "score": 51.14
+ },
+ "C2l": {
+  "cid": "C7",
+  "k": 29,
+  "head": "ch-c7-h3-9",
+  "headtitle": "7.2.7 采样与两段式回传",
+  "text": "整批贪心时直接 argmax，跳过整个词表投影（src/compute/model_runner.py:451-458）——这是 decode 的默认路径，省下的正是最大的一次矩阵乘（src/compute/model_runner.py:454）。",
+  "hl": [
+   "跳过整个词表投影"
+  ],
+  "block": "在干什么：末段的出口有两个分叉。整批贪心时直接 argmax，跳过整个词表投影（src/compute/model_runner.py:451-458）——这是 decode 的默认路径，省下的正是最大的一次矩阵乘（src/compute/model_runner.py:454）。否则先 compute_logits 再进 Sampler（src/compute/model_runner.py:459-464）。 关键代码：src/compute/model_runner.py:490-520（两段式回传）。",
+  "score": 61.42
+ },
+ "X5": {
+  "cid": "C3",
+  "k": 77,
+  "head": "ch-c3-h3-10",
+  "headtitle": "3.2.8 TP 通信：三位一体的维度搬运",
+  "text": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=dev…",
+  "hl": [],
+  "block": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=device), dim=0).min().item()。为什么取最小值（注释 :132）：块号必须在每张卡上含义一致，否则同一块号在不同 rank 上指向不同的物理页，KV 就写串了。注意 dim=0 在这里命中 all_g…",
+  "score": 15.54
+ },
+ "X6": {
+  "cid": "C3",
+  "k": 77,
+  "head": "ch-c3-h3-10",
+  "headtitle": "3.2.8 TP 通信：三位一体的维度搬运",
+  "text": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=dev…",
+  "hl": [],
+  "block": "KV 池的块数协商就用到了 all_gather：src/compute/kv_pool.py:131-134 先算本 rank 的 max(4, available // block_bytes)，再 all_gather(torch.tensor([num_blocks], device=device), dim=0).min().item()。为什么取最小值（注释 :132）：块号必须在每张卡上含义一致，否则同一块号在不同 rank 上指向不同的物理页，KV 就写串了。注意 dim=0 在这里命中 all_g…",
+  "score": 15.54
+ },
+ "C3a": {
+  "cid": "C3",
+  "k": 65,
+  "head": "ch-c3-h3-9",
+  "headtitle": "3.2.7 PP 边界：收发为什么留在图外",
+  "text": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。",
+  "hl": [
+   "_recv_intermediate",
+   "modelrunner"
+  ],
+  "block": "ModelRunner 侧的落点是 _pp_dst / _pp_src（src/compute/model_runner.py:162-167）与 _send_intermediate / _recv_intermediate（:170-185）。_recv_intermediate 的 static 参数（:178）是关键：buf = self._pp_recv if static else self._make_pp_buffer(n)（:180）—— CUDA Graph 重放必须用捕获时那块固定地址的缓冲，…",
+  "score": 20.54
+ },
+ "C3b": {
+  "cid": "C8",
+  "k": 15,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "if residual is None: return _rmsnorm(x, self.weight, self.eps), x",
+  "hl": [
+   "rmsnorm"
+  ],
+  "block": "def forward(self, x, residual=None): if residual is None: return _rmsnorm(x, self.weight, self.eps), x _fused_add_rmsnorm(x, residual, self.weight, self.eps) return x, residual",
+  "score": 27.86
+ },
+ "C3c": {
+  "cid": "C8",
+  "k": 18,
+  "head": "ch-c8-h3-5",
+  "headtitle": "8.2.3 QKV 投影与拆分：字符串 shard_id 是加载期的唯一约定",
+  "text": "GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "hl": [],
+  "block": "在干什么：一次 GEMM 算出 [token数, (Q头数 + 2×KV头数)×头维]，再从 HF 的三个独立权重灌进同一个融合矩阵的不同区段。GQA 下如果 KV 头数少于卡数，多个 rank 会持有一份相同的 KV 权重。 关键代码（src/compute/layers/linear.py:387-410）：",
+  "score": 19.11
+ },
+ "C3d": {
+  "cid": "C8",
+  "k": 22,
+  "head": "ch-c8-h3-6",
+  "headtitle": "8.2.4 QK-Norm 与 RoPE：顺序、配对方式、dtype 三个静默陷阱",
+  "text": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。",
+  "hl": [
+   "头内"
+  ],
+  "block": "在干什么：把上一步的 qkv 按 [q_size, kv_size, kv_size] 切成 q/k/v，各自 reshape 成多头形状，先对 q/k 做头内归一化，再做 RoPE。v 不参与旋转。 关键代码（src/compute/models/qwen3.py:175-187，配合 src/compute/layers/ops.py:53-71）：",
+  "score": 14.03
+ },
+ "C3e": {
+  "cid": "C8",
+  "k": 27,
+  "head": "ch-c8-h3-7",
+  "headtitle": "8.2.5 attention：先写 KV、再算注意力，两条接口一把算子",
+  "text": "o = flash_attn_with_kvcache(q.unsqueeze(1), k_cache, v_cache, cache_seqlens=cache_seqlens,",
+  "hl": [],
+  "block": "pool = meta.kv_cache k_cache = pool[0, layer_id] v_cache = pool[1, layer_id] store_kvcache(k, v, k_cache.reshape(-1, num_kv_heads, head_dim), v_cache.reshape(-1, num_kv_heads, head_dim), slot_mapping) q = q.contiguous().view(-1, num_qo_heads, head_dim) ... if …",
+  "score": 12.18
+ },
+ "C3f": {
+  "cid": "C8",
+  "k": 30,
+  "head": "ch-c8-h3-8",
+  "headtitle": "8.2.6 输出投影与 FFN：TP 的一对\"切-合\"",
+  "text": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。",
+  "hl": [
+   "行并行"
+  ],
+  "block": "在干什么：attention 的输出经过 o_proj（行并行，输入已经是分片状态），MLP 走 gate_up_proj（融合列并行）→ SiluAndMul → down_proj（行并行）。 关键代码（src/compute/layers/linear.py:302-317）：",
+  "score": 44.79
+ },
+ "C3g": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/compute/layers/layernorm.py:41-49）。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 13.02
+ },
+ "C3h": {
+  "cid": "C10",
+  "k": 35,
+  "head": "ch-c10-h3-7",
+  "headtitle": "10.2.5 每次 step 第一步：压平形状 + 门控打分 + top-k 路由",
+  "text": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。",
+  "hl": [
+   "forward"
+  ],
+  "block": "在干什么：SparseMoeBlock.forward 先把可能带 batch 维的形状压成 [T, H]，算出每个 token 的 top-k 专家号与权重（src/moe/block.py:150-157）。 关键代码：src/moe/block.py:44-62 是 route_experts 的全部。",
+  "score": 30.99
+ },
+ "C3i": {
+  "cid": "C9",
+  "k": 17,
+  "head": "ch-c9-h3-7",
+  "headtitle": "9.2.5 每层的真实顺序：融合残差 → Attention → 融合残差 → MLP",
+  "text": "return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；",
+  "hl": [
+   "下一层"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：两处 norm 的语义相同，都是「先加残差再归一化」（Pre-LN）；如果写成「归一化后再加残差」就是 Post-LN，数值完全不同且不报错（src/compute/models/qwen3.py:227-229）。return self.mlp(hidden_states), residual 故意不做最后的相加（:231-234），把这次加法留给下一层的融合 kernel；循环结束后由 self.norm(h, residual)[0] 收尾（:294）。替代方案是标准 H…",
+  "score": 17.98
+ },
+ "C3j": {
+  "cid": "C8",
+  "k": 16,
+  "head": "ch-c8-h3-4",
+  "headtitle": "8.2.2 残差 + RMSNorm：把\"相加\"和\"归一化\"融成一次原地写",
+  "text": "代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/compute/layers/layernorm.py:41-49）。",
+  "hl": [],
+  "block": "为什么这么写 / 替代方案 / 代价：RMSNorm 相比 LayerNorm 少了求均值与减均值（src/compute/layers/layernorm.py:4-6），而 decode 每步都要把全部归一化层过一遍，省下的是纯访存。进一步地，融合版省掉一次中间张量分配和一次全量读写（src/compute/layers/layernorm.py:12-14）。代价是接口变得不对称：forward 正常路径返回 (norm(x), x)、融合路径返回 (x, residual) 且两个张量已被原地改写（src/…",
+  "score": 8.6
+ },
+ "C3k": {
+  "cid": "C8",
+  "k": 38,
+  "head": "ch-c8-h3-10",
+  "headtitle": "8.2.8 词表并行与出口：embedding 的哑元行、logits 的 gather 与 argmax 的两条路",
+  "text": "出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。",
+  "hl": [
+   "parallellmhead"
+  ],
+  "block": "在干什么：入口 VocabParallelEmbedding 只持有 vocab/tp 行，越界 token 查表拿到 0 向量、靠 all-reduce 求和补回正确性；出口 ParallelLMHead 有两条路径——常规 forward 出全量 logits，argmax 只传 [batch] 的局部最大值与索引。 关键代码（src/compute/layers/vocab_parallel.py:182-195、260-296 的骨架）：",
+  "score": 22.79
+ },
+ "C3l": {
+  "cid": "C7",
+  "k": 29,
+  "head": "ch-c7-h3-9",
+  "headtitle": "7.2.7 采样与两段式回传",
+  "text": "整批贪心时直接 argmax，跳过整个词表投影（src/compute/model_runner.py:451-458）——这是 decode 的默认路径，省下的正是最大的一次矩阵乘（src/compute/model_runner.py:454）。 否则先 compute_logits 再进 Sa…",
+  "hl": [],
+  "block": "在干什么：末段的出口有两个分叉。整批贪心时直接 argmax，跳过整个词表投影（src/compute/model_runner.py:451-458）——这是 decode 的默认路径，省下的正是最大的一次矩阵乘（src/compute/model_runner.py:454）。否则先 compute_logits 再进 Sampler（src/compute/model_runner.py:459-464）。 关键代码：src/compute/model_runner.py:490-520（两段式回传）。",
+  "score": 21.12
+ },
+ "S5": {
+  "cid": "C11",
+  "k": 35,
+  "head": "ch-c11-h3-9",
+  "headtitle": "11.2.7 接受判定（贪心路径）：比 token，不比概率",
+  "text": "在干什么：调度器把扁平数组按 width 切回每条序列，调 greedy_accept_length 得到接受的草稿数 j，并产出 draft[:j] + [seg[j]]。",
+  "hl": [
+   "greedy_accept_length"
+  ],
+  "block": "在干什么：调度器把扁平数组按 width 切回每条序列，调 greedy_accept_length 得到接受的草稿数 j，并产出 draft[:j] + [seg[j]]。 关键代码：src/control/scheduler.py:378-381 与 src/spec/verify.py:104-111",
+  "score": 70.96
+ },
+ "S6": {
+  "cid": "C11",
+  "k": 46,
+  "head": "ch-c11-h3-11",
+  "headtitle": "11.2.9 状态推进：num_cached_tokens += j+1 与覆盖写",
+  "text": "其余 K-j 个 slot 不释放、不回滚，它们与有效 token 同在一个页内，下一步写入会自然覆盖（src/control/scheduler.py:365-368、src/spec/engine.py:82-84）。",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：验证阶段写进 KV 的是 K+1 个位置，但只有前 j+1 个是真实的，所以 num_cached_tokens 只推进 j+1；其余 K-j 个 slot 不释放、不回滚，它们与有效 token 同在一个页内，下一步写入会自然覆盖（src/control/scheduler.py:365-368、src/spec/engine.py:82-84）。选\"覆盖\"而不是\"回滚\"的代价是：被拒位置的 KV 是脏的，任何\"按块内容做哈希\"的前缀发布都必须显式传有效长度，否则后来的请求会…",
+  "score": 31.01
+ },
+ "S7": {
+  "cid": "C11",
+  "k": 46,
+  "head": "ch-c11-h3-11",
+  "headtitle": "11.2.9 状态推进：num_cached_tokens += j+1 与覆盖写",
+  "text": "选\"覆盖\"而不是\"回滚\"的代价是：被拒位置的 KV 是脏的，任何\"按块内容做哈希\"的前缀发布都必须显式传有效长度，否则后来的请求会命中与真实文本不符的前缀——这就是 sync_prefix 为什么要开 num_new_tokens 这个参数（src/data/kv.py:178-185）。",
+  "hl": [
+   "sync_prefix"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：验证阶段写进 KV 的是 K+1 个位置，但只有前 j+1 个是真实的，所以 num_cached_tokens 只推进 j+1；其余 K-j 个 slot 不释放、不回滚，它们与有效 token 同在一个页内，下一步写入会自然覆盖（src/control/scheduler.py:365-368、src/spec/engine.py:82-84）。选\"覆盖\"而不是\"回滚\"的代价是：被拒位置的 KV 是脏的，任何\"按块内容做哈希\"的前缀发布都必须显式传有效长度，否则后来的请求会…",
+  "score": 18.33
+ },
+ "Q1": {
+  "cid": "C7",
+  "k": 30,
+  "head": "ch-c7-h3-9",
+  "headtitle": "7.2.7 采样与两段式回传",
+  "text": "def _stage_samples(self, p, d):",
+  "hl": [
+   "_stage_samples"
+  ],
+  "block": "def _stage_samples(self, p, d): n_p = 0 if p is None else p.numel() n_d = 0 if d is None else d.numel() ... self._copy_stream.wait_stream(cur) with torch.cuda.stream(self._copy_stream): if d is not None: self._sample_cpu[:n_d].copy_(d, non_blocking=True) if p …",
+  "score": 55.5
+ },
+ "Q2": {
+  "cid": "C5",
+  "k": 57,
+  "head": "ch-c5-h3-8",
+  "headtitle": "5.2.6 后处理：publish / release / deallocate 与记账收口",
+  "text": "代价是被抢占的请求要重算，换来的状态空间小得多。 抢占阈值与策略在调度器侧（src/control/scheduler.py），本章只提供\"能/不能追加\"这个判据。",
+  "hl": [
+   "scheduler"
+  ],
+  "block": "为什么用 recompute 抢占而不是 swap：块账本里页与序列的绑定就是页号写进 block_table，\"换出再换回\"要保证池内槽位内容仍然有效，账本就得再维护一套\"离场序列的私有副本\"生命周期；recompute 直接 deallocate(publish=False) 丢掉全部页、下次重新算前缀，账本里不需要第二套生命周期。代价是被抢占的请求要重算，换来的状态空间小得多。抢占阈值与策略在调度器侧（src/control/scheduler.py），本章只提供\"能/不能追加\"这个判据。",
+  "score": 5.54
+ },
+ "R1": {
+  "cid": "C5",
+  "k": 50,
+  "head": "ch-c5-h3-8",
+  "headtitle": "5.2.6 后处理：publish / release / deallocate 与记账收口",
+  "text": "在干什么：本步算完，把\"刚写满的块\"发布进前缀索引供别人复用；",
+  "hl": [],
+  "block": "在干什么：本步算完，把\"刚写满的块\"发布进前缀索引供别人复用；序列结束时把页按\"满块留缓存、半块还空闲\"归还。",
+  "score": 33.72
+ },
+ "Q3": {
+  "cid": "C5",
+  "k": 61,
+  "head": "ch-c5-h3-9",
+  "headtitle": "5.2.7 采样回来：read_samples 与序列状态推进",
+  "text": "p_ids, d_ids = self.executor.read_samples(read_p, n_d) outputs = self.scheduler.update(sched, p_ids, d_ids)",
+  "hl": [
+   "update",
+   "scheduler"
+  ],
+  "block": "# src/control/core.py:183-192 # ⚠️ read_samples 按元素数切片，不是按请求数；宽度由 prefill 通道布局决定 read_p = Scheduler.prefill_samples(sched.prefills) p_ids, d_ids = self.executor.read_samples(read_p, n_d) outputs = self.scheduler.update(sched, p_ids, d_ids)",
+  "score": 23.08
+ },
+ "Q4": {
+  "cid": "C4",
+  "k": 35,
+  "head": "ch-c4-h3-9",
+  "headtitle": "4.2.7 取数与回写：定宽切片、接受长度 j、以及\"最后一步记账不能省\"",
+  "text": "chunked prefill 的中间块 continue 而不采样、也不判完成（src/control/scheduler.py:462-468）：hidden 后面还有上下文，没有\"下文\"可用来预测。",
+  "hl": [
+   "scheduler",
+   "中间块",
+   "不采样",
+   "后面还有上下文",
+   "没有"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：投机验证阶段写进 KV 的是 K+1 个位置，但只有前 j+1 个是真实的，所以 num_cached_tokens 只推进 j+1，其余 K-j 个 slot 留在同一页里等下一步自然覆盖（src/control/scheduler.py:365-368）。被接受的 token 不必过网络回传——它们就是草稿的前 j 个，草稿本来就在调度器手里（src/control/scheduler.py:370-371）。chunked prefill 的中间块 continue 而不…",
+  "score": 53.18
+ },
+ "R2": {
+  "cid": "C4",
+  "k": 35,
+  "head": "ch-c4-h3-9",
+  "headtitle": "4.2.7 取数与回写：定宽切片、接受长度 j、以及\"最后一步记账不能省\"",
+  "text": "被接受的 token 不必过网络回传——它们就是草稿的前 j 个，草稿本来就在调度器手里（src/control/scheduler.py:370-371）。",
+  "hl": [
+   "scheduler",
+   "被接受的",
+   "它们就是草稿的前"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：投机验证阶段写进 KV 的是 K+1 个位置，但只有前 j+1 个是真实的，所以 num_cached_tokens 只推进 j+1，其余 K-j 个 slot 留在同一页里等下一步自然覆盖（src/control/scheduler.py:365-368）。被接受的 token 不必过网络回传——它们就是草稿的前 j 个，草稿本来就在调度器手里（src/control/scheduler.py:370-371）。chunked prefill 的中间块 continue 而不…",
+  "score": 122.75
+ },
+ "R3": {
+  "cid": "C4",
+  "k": 33,
+  "head": "ch-c4-h3-9",
+  "headtitle": "4.2.7 取数与回写：定宽切片、接受长度 j、以及\"最后一步记账不能省\"",
+  "text": "主循环用 Scheduler.prefill_samples 算出本步 prefill 通道会回传多少元素，再交给 Scheduler.update。",
+  "hl": [
+   "update",
+   "scheduler"
+  ],
+  "block": "在干什么：执行侧按元素数把采样结果 D2H 到锁页内存（src/compute/model_runner.py:490-520）；主循环用 Scheduler.prefill_samples 算出本步 prefill 通道会回传多少元素，再交给 Scheduler.update。普通序列按 num_scheduled_tokens 推进 KV 账本并追加 token，投机序列按接受长度 j 走 _update_spec_batch 的定宽切片。 关键代码：src/control/scheduler.py:394-3…",
+  "score": 34.49
+ },
+ "R4": {
+  "cid": "C2",
+  "k": 43,
+  "head": "ch-c2-h3-8",
+  "headtitle": "2.2.6 step 第 4 段：后处理，scheduler.update 回写状态",
+  "text": "scheduler.py:423-428 解释了漏掉的后果：FINISHED 的序列会被下一步重新调度、重新挂草稿，而它的账本已在 deallocate 里清零，组包侧的 len(token_ids) == num_cached_tokens + 1 断言随即失败——这类 bug 在单请求短序列上不…",
+  "hl": [
+   "scheduler",
+   "重新挂草稿",
+   "随即失败"
+  ],
+  "block": "prefill 走的是「按 num_scheduled_tokens 推进」；投机验证走的是另一套（scheduler.py:446-447 分派到 _update_spec_batch），因为有效长度是 j+1，不是 num_scheduled_tokens：验证阶段往 KV 写了 K+1 个位置，但只有前 j+1 个是真实的（scheduler.py:365-368）。多余的 K-j 个 slot 不释放不回滚，留在同一 256-token 页里等下一次写入自然覆盖。这是「用块粒度换掉一次回滚」的典型取舍。 投…",
+  "score": 65.43
+ },
+ "R5": {
+  "cid": "C2",
+  "k": 39,
+  "head": "ch-c2-h3-8",
+  "headtitle": "2.2.6 step 第 4 段：后处理，scheduler.update 回写状态",
+  "text": "在干什么：把采样出来的 token 装回序列、推进 KV 账本、判断是否结束、回收已完成序列的块，最后把增量包装成 EngineCoreOutput 列表返回。",
+  "hl": [
+   "enginecoreoutput"
+  ],
+  "block": "在干什么：把采样出来的 token 装回序列、推进 KV 账本、判断是否结束、回收已完成序列的块，最后把增量包装成 EngineCoreOutput 列表返回。",
+  "score": 26.25
+ },
+ "Q5": {
+  "cid": "C7",
+  "k": 11,
+  "head": "ch-c7-h3-3",
+  "headtitle": "7.2.1 起点：算与取数被拆成两个半程",
+  "text": "src/control/core.py:183-186 明确写了这个知识必须由调度器提供（Scheduler.prefill_samples）。",
+  "hl": [
+   "schedule",
+   "scheduler"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：src/compute/worker.py:22-23 把理由写成注释：两者故意分开，前者只发射（异步），后者才同步取数——分开才能让 H2D/D2H 与计算重叠。朴素写法（前向里直接同步取回 id）会让整条流水线停下来等 GPU 算完采样（src/compute/model_runner.py:121-123）。代价是接口状态被拆成了两半：run 返回的 (n_p, n_d) 是「有多少个元素」而不是「有哪些 id」，调用方必须原样把它交给下一次 read_samples；s…",
+  "score": 39.12
+ },
+ "H2": {
+  "cid": "C7",
+  "k": 31,
+  "head": "ch-c7-h3-9",
+  "headtitle": "7.2.7 采样与两段式回传",
+  "text": "代价有三个：布局被钉死（decode 在前、prefill 在后，read_samples 必须用同样的切片顺序，src/compute/model_runner.py:517）；",
+  "hl": [
+   "read_samples"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：专用 copy stream + 锁页内存让「拷回」与「下一轮前向」重叠（src/compute/model_runner.py:119-127）。代价有三个：布局被钉死（decode 在前、prefill 在后，read_samples 必须用同样的切片顺序，src/compute/model_runner.py:517）；容量可能不够，单步真实 token 数超过预分配时会临时扩容（src/compute/model_runner.py:496-498）；以及「元素数 vs…",
+  "score": 8.61
+ },
+ "H3": {
+  "cid": "C7",
+  "k": 31,
+  "head": "ch-c7-h3-9",
+  "headtitle": "7.2.7 采样与两段式回传",
+  "text": "回到控制面：read_samples 同步 event 后按 n_d / n_p 切片成两个 Python list（src/compute/model_runner.py:514-520），Scheduler.update 先处理 decodes 再处理 prefills（src/control/…",
+  "hl": [
+   "read_samples"
+  ],
+  "block": "为什么这么写 / 替代方案 / 代价：专用 copy stream + 锁页内存让「拷回」与「下一轮前向」重叠（src/compute/model_runner.py:119-127）。代价有三个：布局被钉死（decode 在前、prefill 在后，read_samples 必须用同样的切片顺序，src/compute/model_runner.py:517）；容量可能不够，单步真实 token 数超过预分配时会临时扩容（src/compute/model_runner.py:496-498）；以及「元素数 vs…",
+  "score": 6.57
+ },
+ "H4": {
+  "cid": "C5",
+  "k": 65,
+  "head": "ch-c5-h3-9",
+  "headtitle": "5.2.7 采样回来：read_samples 与序列状态推进",
+  "text": "EngineCoreOutput（src/data/batch.py:201-211）就是这一步的产物：seq_id + 增量的 new_token_ids + is_finished；",
+  "hl": [
+   "engine"
+  ],
+  "block": "EngineCoreOutput（src/data/batch.py:201-211）就是这一步的产物：seq_id + 增量的 new_token_ids + is_finished；new_token_ids 为空有两种正常情形——chunked prefill 的中间段（need_sample=False，src/data/batch.py:181-182），或 max_tokens 已用尽（:205）。",
+  "score": 33.88
+ }
+}

@@ -1,0 +1,21 @@
+{
+ "ok": true,
+ "viewBox": [
+  -20,
+  -12,
+  12014.578125,
+  5491.1875
+ ],
+ "nodes": 80,
+ "clusters": 12,
+ "edges": 65,
+ "clipped": 0,
+ "crossings": 2,
+ "longestEdge": 3303,
+ "nodeOverlapArea": 0,
+ "clusterOverlapArea": 0,
+ "shapeClips": 0,
+ "katexNodes": 37,
+ "mathNodes": 37,
+ "svgBytes": 176705
+}

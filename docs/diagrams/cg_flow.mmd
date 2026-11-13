@@ -1,0 +1,91 @@
+%%{init: {"themeCSS": ".nodeLabel div, .nodeLabel p, .edgeLabel div, .edgeLabel p { padding: 8px 12px; } .nodeLabel .katex, .edgeLabel .katex { font-size: 1em; }"}}%%
+flowchart TB
+    S0["$$\begin{gathered}\textbf{入口：一步 decode 进来，先算出该补到哪一档}\\\\\text{前向入口把本步的 decode 序列交给一步解码函数}\\\\\text{先数出真实并发 b，再二分找最小的可用档位}\\\\\text{decode 每条序列每步只加 1 个 token，形状只由 b 定}\\\\\text{档位只影响 padding；接着判图建过没有、b 是否在覆盖内}\\\\b=\text{len(seqs)},\quad q_{\text{len}}=1,\quad K_{\text{len}}=c+1\\\\\mathrm{pad}(b)=\min\{g\in\mathcal{B}:g\ge b\}\end{gathered}$$"]
+
+    D1{"这次启动要不要录图？"}
+
+
+
+
+
+
+    classDef comm fill:#eef3ff,stroke:#4a6fa5,stroke-width:1.5px
+    classDef io fill:#fff4e6,stroke:#c07a2b,stroke-width:1.5px
+    STG1["<b>启动期 · 捕获这一次：录 20 张图，之后不再录</b>"]
+    D2{"world 组大于 1？"}
+    X0["$$\begin{gathered}\textbf{不录：整步走逐算子，根本没有图}\\\\text{开关关掉时这个引擎就按普通逐算子执行}\\\\text{它不是异常分支，是必须长期存在的对照路径}\\\\text{性能差、但数值正确，是图路径的基准}\\\\text{图倍数}=\frac{T_{\text{eager}}}{T_{\text{graph}}}\end{gathered}$$"]
+    C1["$$\begin{gathered}\textbf{多卡对齐：全体 rank 先站到同一条起跑线}\\\\\text{world 组大于 1 时，录图前先过一次全体 barrier}\\\\\text{图里含集合通信，且每个档位都要在图外先热身}\\\\\text{先到的卡会卡死在热身的集合通信上，日志停在捕获}\\\\\text{内外两道保险：全体一次，TP 与 PP 各一次}\\\\\text{内层那道在录制节点里，外层这道罩住整次捕获}\\\\\text{barrier}\ \to\ \text{录制}\ \to\ \text{barrier}\end{gathered}$$"]:::comm
+    C2["$$\begin{gathered}\textbf{净化：把本卡清成一张白纸}\\\\\text{先同步，排空本卡所有已排队的异步工作}\\\\\text{再清缓存，把空闲显存块还给驱动，让地址连续}\\\\\text{为什么：捕获期间任何一次新分配都落进图的私有池}\\\\\text{典型来源是前向里惰性做一次精度转换}\\\\\text{报错原文：overwritten by a subsequent run}\\\\T_{\text{pending}}=0,\qquad M_{\text{cached}}\to 0\end{gathered}$$"]
+    C3["$$\begin{gathered}\textbf{铺安全值：整片槽位表先写满 -1}\\\\\text{录制前整片填一次，录制后再填一次清掉热身的脏值}\\\\\text{热身也会真的写 KV，假 token 写进去的必须清掉}\\\\\text{若改填 0，padding 行会写进真实的第 0 页第 0 格}\\\\\text{现象是第一条序列偶尔乱掉，只在 b 不落档位时复现}\\\\\text{slot}\leftarrow -1\quad\text{（全片，不是只填空位）}\end{gathered}$$"]
+    C4["$$\begin{gathered}\textbf{取档位表：不是每个并发数都录，只录这些}\\\\\text{小并发按 1 2 4 8 四档密集排，高并发从 16 起每 16 一档}\\\\\text{低并发相对误差大，档位要密；高并发补几行无所谓}\\\\\text{最后保证最大档一定在表里，否则永远对齐不到图}\\\\\mathcal{B}=\{1,2,4,8\}\cup\{16,24,\dots,256\}\\\\\left|\mathcal{B}\right|=20\ \text{档}\end{gathered}$$"]
+    D3{"还有档位没录？"}
+    C5["$$\begin{gathered}\textbf{热身：先在图外把同一段计算真跑一遍}\\\\\text{走普通流把四件只发生一次的事全部做完}\\\\\text{算子即时编译、句柄创建、工作区分配、通信建链}\\\\\text{漏掉就全被录进图里，重放又慢又错，且难定位}\\\\\text{两次调用必须是同一批张量、同一组参数，否则地址不同}\\\\\text{图外一次}\ \to\ \text{图内一次，必须成对}\end{gathered}$$"]
+    C6["$$\begin{gathered}\textbf{图内录制：只记录不执行，节点是 kernel、边是依赖}\\\\\text{进图前 TP 与 PP 两个组各过一次 barrier，步调必须一致}\\\\\text{各卡不同时开录，先到的卡就卡在热身的集合通信上}\\\\\text{图里可以放集合通信，点对点收发必须留在图外}\\\\\text{录制不执行，所以捕获完的输出张量是未初始化的}\\\\\text{图}\equiv(\text{kernel 序列},\ \text{依赖边})\end{gathered}$$"]:::comm
+    C7["$$\begin{gathered}\textbf{共用池：第一张图的池子留下来给后面所有图}\\\\\text{降序录，第一张最大档先把池子撑到够用，小的复用它}\\\\\text{于是显存不随档位数线性增长，二十张图共用一块}\\\\\text{输出对象也按档位长期持有，重放是往里原地写}\\\\\text{池子不因图对象被回收而释放，销毁必须显式做}\\\\\text{20 张图}\ \to\ \text{1 块私有池}\end{gathered}$$"]
+    C8["$$\begin{gathered}\textbf{收尾：整批录完再同步，并把这笔显存记进预算}\\\\\text{外层再补一次全体 barrier，与内层那道不重复}\\\\\text{图的私有池要从 KV 池预算里扣，扣完块数就少了}\\\\\text{也就是拿 KV 容量换启动开销，这是最实在的一笔代价}\\\\\text{块数}=\text{总预算}-\text{图足迹}\end{gathered}$$"]
+    STG1 --> D2
+    STG2["<b>运行期 · 每个 decode 步：组表 → 收 → 重放 → 发 → 切行</b>"]
+    D7{"图能覆盖这个 b 吗？"}
+    R1["$$\begin{gathered}\textbf{组表：把这一步的真实数据写进常驻缓冲}\\\\\text{四张表逐条填：本步 token 号、位置、物理槽位、已缓存长度}\\\\\text{槽位按页号乘页大小加页内偏移现算，分页下不连续}\\\\\text{走锁页内存加非阻塞拷贝：少一次中转，且与计算重叠}\\\\\text{只写内容不换地址，地址一换图就找不到数据}\\\\\text{slot}=\text{bt}[p/\text{bsz}]\cdot\text{bsz}+p\bmod \text{bsz}\end{gathered}$$"]:::io
+    D4{"要补到档位吗？"}
+    R2["$$\begin{gathered}\textbf{补安全值：多出来的槽位三行写死，算得出但不影响谁}\\\\\text{槽位写 -1：写 KV 的内核遇到就跳过，不落下}\\\\\text{长度写 0：这些行不读任何历史，注意力是空的}\\\\\text{页表写 -1：查不到物理页，不会越界访问}\\\\\text{token 号与位置沿用上一轮残留值，靠上面三行兜住}\\\\\left[b,\ \mathrm{pad}(b)\right)\ \leftarrow\ (\text{slot}=-1,\ \text{len}=0,\ \text{页}=-1)\end{gathered}$$"]
+    R3["$$\begin{gathered}\textbf{图外收：从上一段取回隐层与残差，写进常驻缓冲}\\\\\text{只对 PP 非首段执行，地址必须是捕获时那一块}\\\\\text{收对调用方是阻塞的：底层异步，但返回前把等待走完}\\\\\text{图里放一个阻塞主机的调用，整次重放就失去意义}\\\\\text{两个张量都要收，残差少一条下一段就静默算错}\\\\h\,[b,hs],\ r\,[b,hs]\ \to\ \text{捕获时的常驻缓冲}\end{gathered}$$"]:::io
+    R4["$$\begin{gathered}\textbf{图内重放：一次提交跑完整步}\\\\\text{CPU 只调一次重放，GPU 的命令处理器按依赖自己派发}\\\\\text{这一步的计算量一点没少，少的是几千次提交动作}\\\\\text{图里还有集合通信节点，它们的提交开销也一起没了}\\\\t_{\text{launch}}=6.6\,\mu s\ \ \text{对}\ \ N\approx2500\ \text{次}\end{gathered}$$"]
+    R5["$$\begin{gathered}\textbf{图外发：把本段结果推给下一段}\\\\\text{只对 PP 非末段执行，发完直接返回，不参与采样}\\\\\text{先把结果拷贝进发送缓冲，只改内容不换指针}\\\\\text{发两个张量：隐层与残差；采样结果另走控制通道}\\\\\text{点对点只有正向，没有回传激活值的反方向}\\\\\text{收}\ \to\ \text{图内重放}\ \to\ \text{发},\qquad \text{只有中段在图里}\end{gathered}$$"]:::io
+    R6["$$\begin{gathered}\textbf{切行：重放写满整档，只有前 b 行是真的}\\\\\text{输出对象按档位行数写，调用方自己切回真实行数}\\\\\text{切片不改数值；图与逐算子两条路必须算出同一结果}\\\\\text{两条不一致的表现是打开开关模型变笨，最难查}\\\\\text{out}=\text{buf}[:b]\end{gathered}$$"]
+    R7["$$\begin{gathered}\textbf{图外采样：出 logits 或直接取最大值}\\\\\text{采样不进图的三个理由：有随机性、形状随批变、分支多}\\\\\text{贪心与采样走不同分支，图里的分支重放时会走错}\\\\\text{只末段才算，结果异步拷回，与下一轮前向重叠}\\\\\text{id}=\arg\max(\text{logits})\quad\text{或}\quad\sim\mathrm{softmax}\end{gathered}$$"]:::io
+    STG2 --> D7
+    STG3["<b>判据 · 这一刻该不该开图：比值与档位两笔账</b>"]
+    J2["$$\begin{gathered}\textbf{判据本体：倍数只由固定开销占真实计算的比例决定}\\\\\text{一步的时间拆两块：提交与空隙，加上真正的计算}\\\\\text{图把提交那项从几千次压成一次，计算那项动不了}\\\\\text{比值远大于 1 时开图是雪中送炭，远小于 1 时是白开}\\\\\text{倍数}=1+\frac{T_{\text{fixed}}}{T_{\text{compute}}}\end{gathered}$$"]
+    J1{"比值远大于 1 吗？"}
+    J3["$$\begin{gathered}\textbf{小模型反解：提交完全暴露成墙钟时间}\\\\\text{0.6B 单卡 eager 每步 20.2 ms，开图后 2.22 ms}\\\\\text{反解出固定开销约 18.0 ms，占原时间八成九}\\\\\text{GPU 真正干活只有 2.22 ms，那 18 ms 没东西可躲}\\\\\frac{18.0}{2.22}=8.1\ \Rightarrow\ 9.1\times\ (49.5\to449.7\ \text{tok/s})\end{gathered}$$"]
+    J4["$$\begin{gathered}\textbf{大模型反解：提交被 GPU 的影子盖住了}\\\\\text{8B 单卡 eager 每步 27.8 ms，开图后 17.2 ms}\\\\\text{固定开销只占三成八，其余是随规模增长的真实计算}\\\\\text{GPU 忙得久，CPU 的提交可以并行推进，只剩没躲掉的}\\\\\frac{10.6}{17.2}=0.62\ \Rightarrow\ 1.61\times\ (36.0\to58.1\ \text{tok/s})\end{gathered}$$"]
+    J5["$$\begin{gathered}\textbf{旁证：两个模型每层 eager 耗时几乎相等}\\\\\text{eager 下 0.6B 每层 0.72 ms，8B 每层 0.77 ms}\\\\\text{参数差 13 倍而每层耗时不变，说明时间不由计算主导}\\\\\text{开图后每层 0.079 对 0.478 ms，差 6.0 倍才回到计算}\\\\0.72\approx0.77\quad\text{而}\quad0.079\ \text{对}\ 0.478\end{gathered}$$"]
+    J6["$$\begin{gathered}\textbf{档位账：补出来的行要真算，这笔浪费必须摊进去}\\\\\text{真实并发落在档位空档里，多出来的行照跑一遍}\\\\\text{低并发段档位密，浪费大；高并发段浪费自然掉下来}\\\\\text{档位表的疏密就是在这两笔账之间取平衡}\\\\\eta(9)=\frac{16-9}{16}=\frac{7}{16}=0.4375\qquad\eta(240)=\frac{256-240}{256}=\frac{1}{16}=0.0625\end{gathered}$$"]
+    J7["$$\begin{gathered}\textbf{多卡修正：图里能放集合通信，不能放点对点}\\\\\text{TP 的提交开销也一起被消掉，所以倍数反而更高}\\\\\text{PP 的收发留在图外，每步要付主机侧阻塞，倍数被压}\\\\\text{图外多一次同步，就把省下的提交开销还回去一部分}\\\\\text{TP}=2:\ 10.6\times\qquad \text{PP}=2:\ 4.2\times\end{gathered}$$"]
+    STG3 --> J2
+    STG4["<b>失败路径 · 图走不通的出口</b>"]
+    X1["$$\begin{gathered}\textbf{退回逐算子：这条路不是错误，是必须存在的对照}\\\\\text{关图开关打开，或本步并发超出图能覆盖的上限，都走这里}\\\\\text{现开缓冲收上游，用同一个模型调用、同样的输入切片}\\\\\text{两条路径必须算出完全一致的结果，否则就是静默错误}\\\\\text{图路径}\ \equiv\ \text{逐算子路径}\quad\text{（逐 token 对比）}\end{gathered}$$"]
+    D6{"图外的算子会新分配显存吗？"}
+    X2["$$\begin{gathered}\textbf{不能进图：先问这个算子会不会新分配显存}\\\\\text{MoE 的融合内核会按容量池化四块工作区，池化就能进}\\\\\text{某些环境与驱动组合下池化不生效，于是留了逃生开关}\\\\\text{开关一旦设上，就把用户显式关掉的图配置覆盖掉}\\\\\text{判据：固定形状下不新分配}\ \Rightarrow\ \text{可进图}\end{gathered}$$"]
+    X3["$$\begin{gathered}\textbf{三者叠加：流水并行加图加编译一起开直接崩}\\\\\text{报错原文：could not find 0x7f20b3a00000，地址每次不同}\\\\\text{静态地址、跨进程收发、编译的内存规划三者理解不一致}\\\\\text{本项目没深挖根因，只做规避：这三个不要同时开}\\\\\text{如实记成没跑通的组合，不猜机制}\\\\\{\text{PP},\ \text{图},\ \text{编译}\}\ \text{三者全开}\ \Rightarrow\ \text{崩溃}\end{gathered}$$"]
+    S0 --> D1
+    D1 -->|"要录"| D2
+    D1 -->|"不录"| X0
+    D2 -->|"是"| C1
+    D2 -->|"否"| C2
+    C1 --> C2
+    C2 --> C3
+    C3 --> C4
+    C4 --> D3
+    D3 -->|"还有"| C5
+    D3 -->|"录完了"| C8
+    C5 --> C6
+    C6 --> C7
+    C7 --> D3
+    C8 --> D7
+    D7 -->|"能"| R1
+    D7 -->|"不能"| X1
+    R1 --> D4
+    D4 -->|"要补"| R2
+    D4 -->|"不用补"| R3
+    R2 --> R3
+    R3 --> R4
+    R4 --> R5
+    R5 --> R6
+    R6 --> R7
+    R7 -->|"下一步再来一遍"| R1
+    R7 --> J2
+    J2 --> J1
+    J1 -->|"够大，小模型单请求"| J3
+    J1 -->|"不够，大模型或大 batch"| J4
+    J3 --> J5
+    J4 --> J5
+    J5 --> J6
+    J6 --> J7
+    X1 --> D6
+    D6 -->|"会"| X2
+    D6 -->|"不会"| X3
+    X2 -->|"退回"| X1
+    classDef stage fill:#fffbe6,stroke:#b8a24a,stroke-width:1.5px
+    class STG1,STG2,STG3,STG4 stage

@@ -1,0 +1,209 @@
+<!doctype html>
+<!-- 渲染 + 量化校验页（由 mm_diagram_headless 使用；运行时被拷进 diagrams/ 当 _render.html）。
+     读 tp_pp_4gpu.mmd，用 mermaid 渲染，量出裁切/边相交/重叠，内联 katex 样式后
+     把 _rendered.svg / _metrics.json / _status.json POST 回服务端。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>booting</title>
+<link rel="stylesheet" href="katex.min.css">
+<style>html, body { margin: 0; background: #fff; } #stage { transform-origin: 0 0; }</style>
+</head>
+<body>
+<div id="stage"><pre class="mermaid" id="src"></pre></div>
+<script src="_mermaid.min.js" onerror="this.dataset.failed='1'"></script>
+<script>
+  // 本地没有 bundle 就退回 CDN（页面走 http，跨源加载普通脚本没问题）
+  if (document.currentScript.previousElementSibling.dataset.failed) {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>');
+  }
+</script>
+<script type="module">
+// jsdelivr 的 dist/mermaid.min.js 是自包含 IIFE，挂在 __esbuild_esm_mermaid_nm.mermaid.default
+const mermaid = globalThis.__esbuild_esm_mermaid_nm.mermaid.default;
+const save = (name, body) => fetch('/save?name=' + encodeURIComponent(name), { method: 'POST', body });
+
+function segCross(a, b, c, d) {
+  // 只在"严格穿越"时算相交：共享端点 / 端点落在另一条边上都不算
+  const s = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = s(c, d, a), d2 = s(c, d, b), d3 = s(a, b, c), d4 = s(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+function sample(path, n) {
+  const L = path.getTotalLength(), pts = [];
+  for (let i = 0; i <= n; i++) { const p = path.getPointAtLength((L * i) / n); pts.push({ x: p.x, y: p.y }); }
+  return pts;
+}
+function measure(svg) {
+  const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  const rect = svg.getBoundingClientRect();
+  const out = {
+    viewBox: vb, scale: vb[2] ? +(rect.width / vb[2]).toFixed(4) : 1,
+    nodes: svg.querySelectorAll('g.node').length,
+    clusters: svg.querySelectorAll('g.cluster').length,
+    edgePaths: svg.querySelectorAll('g.edgePaths path').length,
+    foreignObjects: svg.querySelectorAll('foreignObject').length,
+  };
+  // 1) 裁切：foreignObject 视口 vs 内容 scrollHeight/scrollWidth（getBBox() 测不出来）
+  const clipped = [];
+  svg.querySelectorAll('foreignObject').forEach((fo) => {
+    const w = parseFloat(fo.getAttribute('width')), h = parseFloat(fo.getAttribute('height'));
+    const div = fo.firstElementChild;
+    if (!div || !isFinite(w) || !isFinite(h)) return;
+    const overV = div.scrollHeight - h, overH = div.scrollWidth - w;
+    if (overV > 0.6 || overH > 0.6) clipped.push({
+      overV: +overV.toFixed(2), overH: +overH.toFixed(2), box: [w, h],
+      text: (div.textContent || '').replace(/\s+/g, ' ').slice(0, 80),
+    });
+  });
+  out.clipped = clipped.length;
+  out.clippedDetail = clipped.slice(0, 15);
+  // 2) 边相交 + 最长边
+  const paths = [...svg.querySelectorAll('g.edgePaths path')];
+  const samples = paths.map((p) => sample(p, 40));
+  let crossings = 0;
+  const pairs = [];
+  for (let i = 0; i < samples.length; i++)
+    for (let j = i + 1; j < samples.length; j++) {
+      let c = 0;
+      const A = samples[i], B = samples[j];
+      for (let a = 0; a < A.length - 1; a++)
+        for (let b = 0; b < B.length - 1; b++) if (segCross(A[a], A[a + 1], B[b], B[b + 1])) c++;
+      if (c) { crossings += c; pairs.push([paths[i].id || i, paths[j].id || j, c]); }
+    }
+  out.crossings = crossings;
+  out.crossingPairs = pairs.slice(0, 20);
+  out.longestEdge = paths.length ? +Math.max(...paths.map((p) => p.getTotalLength())).toFixed(0) : 0;
+  // 3) 节点 / 子图重叠（渲染后矩形 ÷ 缩放系数，别用 getBBox 的局部坐标）
+  const toVb = (el) => {
+    const r = el.getBoundingClientRect(), k = out.scale || 1;
+    return { x: r.left / k, y: r.top / k, w: r.width / k, h: r.height / k };
+  };
+  const area = (a, b) => {
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return ox > 0 && oy > 0 ? ox * oy : 0;
+  };
+  const nb = [...svg.querySelectorAll('g.node')].map(toVb);
+  let no = 0;
+  for (let i = 0; i < nb.length; i++) for (let j = i + 1; j < nb.length; j++) no += area(nb[i], nb[j]);
+  out.nodeOverlapArea = +no.toFixed(0);
+  const cb = [...svg.querySelectorAll('g.cluster')].map(toVb);
+  const inside = (u, v) => u.x >= v.x - 1 && u.y >= v.y - 1 && u.x + u.w <= v.x + v.w + 1 && u.y + u.h <= v.y + v.h + 1;
+  // 相邻两列的子图框本来就是紧挨着的（实测只差 1–2 px），这属于正常排布而不是缺陷。
+  // 所以先把每个框向内缩 2 px 再算重叠：只有真正交叠出一块面积才算问题。
+  const inset = (r, d) => ({ x: r.x + d, y: r.y + d, w: Math.max(0, r.w - 2 * d), h: Math.max(0, r.h - 2 * d) });
+  let co = 0;
+  for (let i = 0; i < cb.length; i++) for (let j = i + 1; j < cb.length; j++) {
+    if (inside(cb[i], cb[j]) || inside(cb[j], cb[i])) continue;
+    co += area(inset(cb[i], 2), inset(cb[j], 2));
+  }
+  out.clusterOverlapArea = +co.toFixed(0);
+  // 4) 形状框 vs 标签框：矩形画得比文字窄时，最右/最下会被框"吞掉"（内容不裁，但露在框外）
+  const shapeClips = [];
+  const shapeStats = [];
+  const toVb2 = (el) => {
+    const r = el.getBoundingClientRect(), k = out.scale || 1;
+    return { l: r.left / k, t: r.top / k, r: r.right / k, b: r.bottom / k, w: r.width / k, h: r.height / k };
+  };
+  svg.querySelectorAll('g.node').forEach((n) => {
+    const fo = n.querySelector('foreignObject');
+    const shape = n.querySelector('path, rect, polygon, circle, ellipse');
+    if (!fo || !shape) return;
+    // 两元素都换算到 viewBox 空间再比：label 组带 translate，直接用属性会混坐标系
+    const s = toVb2(shape), f = toVb2(fo);
+    const marginR = +(s.r - f.r).toFixed(1);
+    const marginL = +(f.l - s.l).toFixed(1);
+    const marginT = +(f.t - s.t).toFixed(1);
+    const marginB = +(s.b - f.b).toFixed(1);
+    const worst = Math.max(0, -marginR, -marginL, -marginT, -marginB);
+    const label = (fo.textContent || '').replace(/\s+/g, ' ');
+    shapeStats.push({ id: n.id, shapeW: +s.w.toFixed(1), foW: +f.w.toFixed(1),
+                      marginL, marginR, marginT, marginB,
+                      rect: [+s.l.toFixed(0), +s.t.toFixed(0), +s.w.toFixed(0), +s.h.toFixed(0)],
+                      tail: label.slice(-26) });
+    if (worst > 1) shapeClips.push({ id: n.id, marginL, marginR, marginT, marginB, tail: label.slice(-26) });
+  });
+  out.shapeClips = shapeClips.length;
+  out.shapeClipDetail = shapeClips.slice(0, 15);
+  out.minMarginR = Math.min(...shapeStats.map((s) => s.marginR));
+  out.minMarginL = Math.min(...shapeStats.map((s) => s.marginL));
+  out.tightestShapes = shapeStats.slice().sort((a, b) => a.marginR - b.marginR).slice(0, 8);
+  out.widestShapes = shapeStats.slice().sort((a, b) => b.shapeW - a.shapeW).slice(0, 6);
+  return out;
+}
+
+// 渲染哪张图由 URL 决定：?_render.html?src=notes.mmd&out=notes
+// out 是产物前缀（默认 _），便于同一目录里依次渲染多张图而不互相覆盖。
+// 注意：必须在 try 之外声明 —— catch 里也要用 P 写 status，而 const 是块级作用域。
+const _q = new URLSearchParams(location.search);
+const SRC = _q.get('src') || 'full_flow.mmd';
+const OUT = _q.get('out') || '_';
+const P = (n) => OUT + n;
+
+try {
+  const mmd = await (await fetch('./' + SRC, { cache: 'no-store' })).text();
+  await document.fonts.ready;
+  // 关键：强制把已注册的字体面全部加载出来再量尺寸。
+  // KaTeX 的 @font-face 是懒加载的（只有用到才拉），而 document.fonts.ready 在"还没有文本用到它"
+  // 时就已经 resolve —— 于是 mermaid 会拿回退字体的宽度去定框，导出后浏览器换成真字体、文字变宽，
+  // 就被 foreignObject 默认的 overflow:hidden 整齐切掉（"最右侧符号被吞"就是这个）。
+  const faces = [...document.fonts];
+  await Promise.all(faces.map((f) => f.load().catch(() => null)));
+  await document.fonts.ready;
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+  const rendered = await mermaid.render('mmd_render_0', mmd);   // run() 在本环境不产出 svg
+  document.getElementById('stage').innerHTML = rendered.svg;
+  const svg = document.querySelector('#stage svg');
+  if (!svg) throw new Error('no svg produced');
+  const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  const metrics = measure(svg);
+  metrics.katexNodes = svg.querySelectorAll('.katex').length;
+  metrics.mathNodes = svg.querySelectorAll('math').length;
+  // KaTeX 公式写错时（例如本图踩过的：把 \text 写成 \h 这类未定义命令），
+  // KaTeX 默认 throwOnError:false —— 不抛异常，而是生成 .katex-error 把出错串染红。
+  // 直接数它，这是【公式写错了】最可靠的一手测量，比自己维护命令白名单去猜强。
+  const kerr = [...svg.querySelectorAll('.katex-error')];
+  metrics.katexErrors = kerr.length;
+  metrics.katexErrorSample = kerr.slice(0, 3).map((e) => (e.textContent || '').trim().slice(0, 140));
+  metrics.fontsLoaded = [...document.fonts].filter((f) => f.status === 'loaded').length;
+  metrics.fontsTotal = document.fonts.size;
+  await save(P('metrics.json'), JSON.stringify(metrics, null, 1));
+
+  const clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  clone.setAttribute('width', vb[2]);
+  clone.setAttribute('height', vb[3]);
+  let css = await (await fetch('./katex.min.css', { cache: 'no-store' })).text();
+  // katex.min.css 是压成一行的：只摘掉 woff / ttf 两条回退（保留 woff2），不能按行过滤
+  css = css.replace(/,\s*url\([^)]*\.woff\)[^,;]*/g, '').replace(/,\s*url\([^)]*\.ttf\)[^,;]*/g, '');
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.textContent = css;
+  clone.insertBefore(style, clone.firstChild);
+  // foreignObject 默认 overflow:hidden —— 只要"显示时的度量"比导出时宽一点点，
+  // 最右侧符号就会被整齐切掉。themeCSS 里写 foreignObject{…} 没用：mermaid 会把选择器
+  // 小写成 foreignobject，而 SVG 里标签名区分大小写，规则永远不匹配 → 必须在这里直接注入。
+  const unclip = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  unclip.textContent = 'foreignObject{overflow:visible}';
+  clone.insertBefore(unclip, clone.firstChild);
+  const out = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+  await save(P('rendered.svg'), out);
+  await save(P('status.json'), JSON.stringify({
+    ok: true, viewBox: vb, nodes: metrics.nodes, clusters: metrics.clusters, edges: metrics.edgePaths,
+    clipped: metrics.clipped, crossings: metrics.crossings, longestEdge: metrics.longestEdge,
+    nodeOverlapArea: metrics.nodeOverlapArea, clusterOverlapArea: metrics.clusterOverlapArea,
+    shapeClips: metrics.shapeClips, katexNodes: metrics.katexNodes, mathNodes: metrics.mathNodes,
+    katexErrors: metrics.katexErrors, katexErrorSample: metrics.katexErrorSample,
+    svgBytes: out.length,
+  }, null, 1));
+  await save(P('metrics.json'), JSON.stringify(metrics, null, 1));
+  document.title = `DONE ${vb[2]}x${vb[3]} cross=${metrics.crossings} clip=${metrics.clipped}`
+    + ` katexErr=${metrics.katexErrors}`;
+} catch (err) {
+  await save(P('status.json'), JSON.stringify({ ok: false, error: String((err && err.stack) || err) }, null, 1));
+  document.title = 'ERR';
+}
+</script>
+</body>
+</html>
